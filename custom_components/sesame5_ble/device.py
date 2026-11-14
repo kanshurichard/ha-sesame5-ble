@@ -35,6 +35,7 @@ from .helpers import (
     create_history_tag,
     format_passcode_add_payload,
     format_passcode_delete_payload,
+    parse_credential_records,
     parse_passcode_records,
 )
 
@@ -76,6 +77,8 @@ class Sesame5Device:
         self._mech_settings: Sesame5MechSetting | None = None
         self._history: Sesame5HistoryRecord | None = None
         self._passcodes: list[dict[str, Any]] = []
+        self._fingerprints: list[dict[str, Any]] = []
+        self._cards: list[dict[str, Any]] = []
 
         self._state = STATE_DISCONNECTED
         self._callbacks: list[Callable[[], None]] = []
@@ -84,6 +87,8 @@ class Sesame5Device:
         self._initial_token_received = asyncio.Event()
         self._logged_in = asyncio.Event()
         self._passcodes_received = asyncio.Event()
+        self._fingerprints_received = asyncio.Event()
+        self._cards_received = asyncio.Event()
         self._command_response_futures: dict[int, asyncio.Future[tuple[ResultCode, bytes]]] = {}
 
     @property
@@ -97,8 +102,6 @@ class Sesame5Device:
     @property
     def is_keypad(self) -> bool:
         if self._model_id is not None and self._model_id in TOUCH_MODELS:
-            return True
-        if self._mech_status is not None and self._mech_status.card_count is not None:
             return True
         return False
 
@@ -125,6 +128,26 @@ class Sesame5Device:
     @property
     def passcodes(self) -> list[dict[str, Any]]:
         return list(self._passcodes)
+
+    @property
+    def fingerprints(self) -> list[dict[str, Any]]:
+        return list(self._fingerprints)
+
+    @property
+    def cards(self) -> list[dict[str, Any]]:
+        return list(self._cards)
+
+    @property
+    def passcode_count(self) -> int:
+        return len(self._passcodes)
+
+    @property
+    def fingerprint_count(self) -> int:
+        return len(self._fingerprints)
+
+    @property
+    def card_count(self) -> int:
+        return len(self._cards)
 
     def add_update_callback(self, callback: Callable[[], None]) -> None:
         self._callbacks.append(callback)
@@ -260,8 +283,10 @@ class Sesame5Device:
 
             self._state = STATE_READY
             LOGGER.info("[%s] Sesame 5 authenticated successfully", self._address)
-            # Fetch latest history after successful login
-            asyncio.create_task(self.request_history())
+            if self.is_keypad:
+                await self.request_credentials()
+            else:
+                asyncio.create_task(self.request_history())
 
     async def _on_notify(self, characteristic: BleakGATTCharacteristic, data: bytearray) -> None:
         """Handle incoming GATT notifications from RX characteristic."""
@@ -309,26 +334,15 @@ class Sesame5Device:
         elif item_code == ItemCode.MECH_STATUS.value:
             try:
                 self._mech_status = Sesame5MechStatus(pub_data)
-                if self._mech_status.card_count is not None:
-                    LOGGER.debug(
-                        "[%s] MECH_STATUS (Keypad/Touch): cards=%d, fps=%d, pwds=%d, batt=%d%% (%.2fV)",
-                        self._address,
-                        self._mech_status.card_count,
-                        self._mech_status.fingerprint_count,
-                        self._mech_status.password_count,
-                        self._mech_status.battery_percentage,
-                        self._mech_status.battery_voltage,
-                    )
-                else:
-                    LOGGER.debug(
-                        "[%s] MECH_STATUS: locked=%s, pos=%d, target=%d, batt=%d%% (%.2fV)",
-                        self._address,
-                        self._mech_status.is_locked(),
-                        self._mech_status.position,
-                        self._mech_status.target_position,
-                        self._mech_status.battery_percentage,
-                        self._mech_status.battery_voltage,
-                    )
+                LOGGER.debug(
+                    "[%s] MECH_STATUS: locked=%s, pos=%d, target=%d, batt=%d%% (%.2fV)",
+                    self._address,
+                    self._mech_status.is_locked(),
+                    self._mech_status.position,
+                    self._mech_status.target_position,
+                    self._mech_status.battery_percentage,
+                    self._mech_status.battery_voltage,
+                )
                 self._notify_update()
                 if self.is_ready and not self.is_keypad:
                     # Request history when mechanical status changes on a lock
@@ -350,13 +364,14 @@ class Sesame5Device:
             except Exception:
                 LOGGER.exception("[%s] Failed to parse MECH_SETTING", self._address)
 
+        # Passcodes
         elif item_code == ItemCode.SSM_OS3_PASSCODE_FIRST.value:
             LOGGER.debug("[%s] Passcode list reception started", self._address)
             self._passcodes = []
             self._passcodes_received.clear()
 
         elif item_code == ItemCode.SSM_OS3_PASSCODE_NOTIFY.value:
-            records = parse_passcode_records(pub_data)
+            records = parse_credential_records(pub_data)
             LOGGER.debug("[%s] Received %d passcode records", self._address, len(records))
             self._passcodes.extend(records)
 
@@ -367,6 +382,46 @@ class Sesame5Device:
 
         elif item_code == ItemCode.SSM_OS3_PASSCODE_DELETE.value:
             LOGGER.info("[%s] Keypad reported passcode deletion event", self._address)
+            self._notify_update()
+
+        # Fingerprints
+        elif item_code == ItemCode.FINGERPRINT_FIRST.value:
+            LOGGER.debug("[%s] Fingerprint list reception started", self._address)
+            self._fingerprints = []
+            self._fingerprints_received.clear()
+
+        elif item_code == ItemCode.FINGERPRINT_NOTIFY.value:
+            records = parse_credential_records(pub_data)
+            LOGGER.debug("[%s] Received %d fingerprint records", self._address, len(records))
+            self._fingerprints.extend(records)
+
+        elif item_code == ItemCode.FINGERPRINT_LAST.value:
+            LOGGER.debug("[%s] Fingerprint list reception finished (total %d)", self._address, len(self._fingerprints))
+            self._fingerprints_received.set()
+            self._notify_update()
+
+        elif item_code in (ItemCode.FINGERPRINT_DELETE.value, ItemCode.FINGERPRINT_CHANGE.value):
+            LOGGER.info("[%s] Keypad reported fingerprint event (%d)", self._address, item_code)
+            self._notify_update()
+
+        # Cards
+        elif item_code == ItemCode.CARD_FIRST.value:
+            LOGGER.debug("[%s] Card list reception started", self._address)
+            self._cards = []
+            self._cards_received.clear()
+
+        elif item_code == ItemCode.CARD_NOTIFY.value:
+            records = parse_credential_records(pub_data)
+            LOGGER.debug("[%s] Received %d card records", self._address, len(records))
+            self._cards.extend(records)
+
+        elif item_code == ItemCode.CARD_LAST.value:
+            LOGGER.debug("[%s] Card list reception finished (total %d)", self._address, len(self._cards))
+            self._cards_received.set()
+            self._notify_update()
+
+        elif item_code in (ItemCode.CARD_DELETE.value, ItemCode.CARD_CHANGE.value):
+            LOGGER.info("[%s] Keypad reported card event (%d)", self._address, item_code)
             self._notify_update()
 
     async def _handle_response(self, item_code: int, result_code_val: int, resp_data: bytes) -> None:
@@ -488,19 +543,86 @@ class Sesame5Device:
             raise RuntimeError(f"Delete passcode failed with result: {result.name}")
         LOGGER.info("[%s] Passcode '%s' deleted successfully", self._address, passcode)
 
-    async def request_passcodes(self, timeout: float = 5.0) -> list[dict[str, Any]]:
+    async def request_passcodes(self, timeout: float = 4.0) -> list[dict[str, Any]]:
         """Request and return the list of passcodes registered on the device."""
         if not self.is_ready:
             raise RuntimeError("Device not ready to receive commands")
         self._passcodes = []
         self._passcodes_received.clear()
         LOGGER.debug("[%s] Requesting passcode list from keypad", self._address)
-        await self.send_command(ItemCode.SSM_OS3_PASSCODE_GET, b"", is_encrypted=True)
         try:
-            await asyncio.wait_for(self._passcodes_received.wait(), timeout=timeout)
-        except asyncio.TimeoutError:
-            LOGGER.debug("[%s] Timeout waiting for passcode list, returning current items", self._address)
+            await self.send_command(ItemCode.SSM_OS3_PASSCODE_GET, b"", is_encrypted=True)
+            try:
+                await asyncio.wait_for(self._passcodes_received.wait(), timeout=timeout)
+            except asyncio.TimeoutError:
+                LOGGER.debug("[%s] Timeout waiting for passcode list, returning current items", self._address)
+        except Exception as err:
+            LOGGER.debug("[%s] SSM_OS3_PASSCODE_GET error: %s", self._address, err)
         return list(self._passcodes)
+
+    async def request_fingerprints(self, timeout: float = 4.0) -> list[dict[str, Any]]:
+        """Request and return the list of fingerprints registered on the keypad."""
+        if not self.is_ready:
+            raise RuntimeError("Device not ready to receive commands")
+        self._fingerprints = []
+        self._fingerprints_received.clear()
+        LOGGER.debug("[%s] Requesting fingerprint list from keypad", self._address)
+        try:
+            await self.send_command(ItemCode.FINGERPRINT_GET, b"", is_encrypted=True)
+            try:
+                await asyncio.wait_for(self._fingerprints_received.wait(), timeout=timeout)
+            except asyncio.TimeoutError:
+                LOGGER.debug("[%s] Timeout waiting for fingerprint list, returning current items", self._address)
+        except Exception as err:
+            LOGGER.debug("[%s] FINGERPRINT_GET error: %s", self._address, err)
+        return list(self._fingerprints)
+
+    async def request_cards(self, timeout: float = 4.0) -> list[dict[str, Any]]:
+        """Request and return the list of cards registered on the keypad."""
+        if not self.is_ready:
+            raise RuntimeError("Device not ready to receive commands")
+        self._cards = []
+        self._cards_received.clear()
+        LOGGER.debug("[%s] Requesting card list from keypad", self._address)
+        try:
+            await self.send_command(ItemCode.CARD_GET, b"", is_encrypted=True)
+            try:
+                await asyncio.wait_for(self._cards_received.wait(), timeout=timeout)
+            except asyncio.TimeoutError:
+                LOGGER.debug("[%s] Timeout waiting for card list, returning current items", self._address)
+        except Exception as err:
+            LOGGER.debug("[%s] CARD_GET error: %s", self._address, err)
+        return list(self._cards)
+
+    async def request_credentials(self, timeout: float = 4.0) -> None:
+        """Query passcodes, fingerprints, and cards from keypad."""
+        if not self.is_ready or not self.is_keypad:
+            return
+
+        LOGGER.debug("[%s] Refreshing all credentials from keypad", self._address)
+        try:
+            await self.request_passcodes(timeout=timeout)
+        except Exception as err:
+            LOGGER.debug("[%s] Failed to fetch passcodes: %s", self._address, err)
+
+        try:
+            await self.request_fingerprints(timeout=timeout)
+        except Exception as err:
+            LOGGER.debug("[%s] Failed to fetch fingerprints: %s", self._address, err)
+
+        try:
+            await self.request_cards(timeout=timeout)
+        except Exception as err:
+            LOGGER.debug("[%s] Failed to fetch cards: %s", self._address, err)
+
+        LOGGER.info(
+            "[%s] Keypad credentials loaded: %d passcode(s), %d fingerprint(s), %d card(s)",
+            self._address,
+            len(self._passcodes),
+            len(self._fingerprints),
+            len(self._cards),
+        )
+        self._notify_update()
 
     async def disconnect(self) -> None:
         """Disconnect GATT client gracefully."""

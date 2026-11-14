@@ -33,17 +33,15 @@ class TestSesameTouch(unittest.IsolatedAsyncioTestCase):
     """Test Sesame Touch mech status and passcode payloads."""
 
     def test_touch_mech_status_parsing(self):
-        """Test parsing of 9-byte Touch mech status (<HhhhB)."""
-        # raw_battery=2900 (5.8V), card_count=2, fp_count=3, pwd_count=4, flags=0
-        payload = struct.pack("<HhhhB", 2900, 2, 3, 4, 0)
+        """Test parsing of Touch 7/9-byte mech status (<HhhB)."""
+        # raw_battery=3175 (6.35V), target=0, position=795, flags=0
+        payload = struct.pack("<HhhB", 3175, 0, 795, 0) + b"\x00\x00"
         status = Sesame5MechStatus(payload)
 
-        self.assertEqual(status.card_count, 2)
-        self.assertEqual(status.fingerprint_count, 3)
-        self.assertEqual(status.password_count, 4)
-        self.assertEqual(status.battery_voltage, 5.8)
-        self.assertGreater(status.battery_percentage, 80)
-        self.assertIsNone(status.is_locked())
+        self.assertEqual(status.battery_voltage, 6.35)
+        self.assertEqual(status.position, 795)
+        self.assertEqual(status.target_position, 0)
+        self.assertEqual(status.battery_percentage, 100)
 
     def test_lock_mech_status_parsing(self):
         """Test parsing of 7-byte Lock mech status (<HhhB)."""
@@ -51,9 +49,7 @@ class TestSesameTouch(unittest.IsolatedAsyncioTestCase):
         payload = struct.pack("<HhhB", 2900, 0, 0, MechStatusBitFlag.IS_IN_LOCK_RANGE)
         status = Sesame5MechStatus(payload)
 
-        self.assertIsNone(status.card_count)
-        self.assertIsNone(status.fingerprint_count)
-        self.assertIsNone(status.password_count)
+        self.assertEqual(status.battery_voltage, 5.8)
         self.assertTrue(status.is_locked())
 
     def test_format_passcode_add_payload(self):
@@ -347,6 +343,50 @@ class TestCoordinatorPasscodes(unittest.IsolatedAsyncioTestCase):
         result_lock = await lock_handler.async_step_init()
         self.assertEqual(result_lock["type"], "form")
         self.assertEqual(result_lock["step_id"], "init")
+
+
+    async def test_credential_counts_and_events(self):
+        """Test keypad credential reception and counts."""
+        device = Sesame5Device(
+            address="AA:BB:CC:DD:EE:FF",
+            secret_key=b"\x00" * 16,
+            hass=MagicMock(),
+            model_id=ProductModel.SESAME_TOUCH_2_PRO.value,
+        )
+        self.assertEqual(device.fingerprint_count, 0)
+        self.assertEqual(device.passcode_count, 0)
+        self.assertEqual(device.card_count, 0)
+
+        # 1. Fingerprint notify stream
+        await device._handle_publish(ItemCode.FINGERPRINT_FIRST.value, b"")
+        fp_payload = bytes([1, 2, 0x11, 0x22, 5]) + b"Thumb"
+        await device._handle_publish(ItemCode.FINGERPRINT_NOTIFY.value, fp_payload)
+        await device._handle_publish(ItemCode.FINGERPRINT_LAST.value, b"")
+
+        self.assertEqual(device.fingerprint_count, 1)
+        self.assertEqual(len(device.fingerprints), 1)
+        self.assertEqual(device.fingerprints[0]["name"], "Thumb")
+        self.assertEqual(device.fingerprints[0]["id_hex"], "1122")
+
+        # 2. Card notify stream
+        await device._handle_publish(ItemCode.CARD_FIRST.value, b"")
+        card_payload = bytes([0, 4, 0xAA, 0xBB, 0xCC, 0xDD, 4]) + b"Card"
+        await device._handle_publish(ItemCode.CARD_NOTIFY.value, card_payload)
+        await device._handle_publish(ItemCode.CARD_LAST.value, b"")
+
+        self.assertEqual(device.card_count, 1)
+        self.assertEqual(len(device.cards), 1)
+        self.assertEqual(device.cards[0]["name"], "Card")
+
+        # 3. Passcode notify stream
+        await device._handle_publish(ItemCode.SSM_OS3_PASSCODE_FIRST.value, b"")
+        pwd_payload = bytes([0, 4, 1, 2, 3, 4, 4]) + b"Home"
+        await device._handle_publish(ItemCode.SSM_OS3_PASSCODE_NOTIFY.value, pwd_payload)
+        await device._handle_publish(ItemCode.SSM_OS3_PASSCODE_LAST.value, b"")
+
+        self.assertEqual(device.passcode_count, 1)
+        self.assertEqual(len(device.passcodes), 1)
+        self.assertEqual(device.passcodes[0]["passcode"], "1234")
 
 
 if __name__ == "__main__":

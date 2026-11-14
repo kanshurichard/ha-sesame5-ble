@@ -127,31 +127,20 @@ class Sesame5MechStatus:
         self.fingerprint_count: int | None = None
         self.password_count: int | None = None
 
-        if len(payload) >= 9:
-            # Sesame Touch / Touch Pro / Face MechStatus: <HhhhB (9 bytes)
-            (
-                raw_battery,
-                card_count,
-                fp_count,
-                pwd_count,
-                status_flags,
-            ) = struct.unpack("<HhhhB", payload[:9])
-            self.card_count = card_count
-            self.fingerprint_count = fp_count
-            self.password_count = pwd_count
-            self._target = 0
-            self._position = 0
-            self._raw_battery = raw_battery
-            self._flags = status_flags
-        elif len(payload) >= 7:
-            # Sesame 5 / 5 Pro MechStatus: <HhhB (7 bytes)
+        if len(payload) >= 7:
+            # Sesame 5 / 5 Pro / Touch MechStatus: <HhhB (7 bytes)
             raw_battery, target, position, status_flags = struct.unpack("<HhhB", payload[:7])
             self._target = target
             self._position = position
             self._raw_battery = raw_battery
             self._flags = status_flags
+        elif len(payload) >= 2:
+            self._raw_battery = struct.unpack("<H", payload[:2])[0]
+            self._target = 0
+            self._position = 0
+            self._flags = 0
         else:
-            raise ValueError(f"MechStatus payload too short: {len(payload)} bytes, expected at least 7")
+            raise ValueError(f"MechStatus payload too short: {len(payload)} bytes, expected at least 2")
 
         self._battery_voltage = raw_battery * 2 / 1000.0
         self._battery_pct = calculate_battery_percentage(self._battery_voltage)
@@ -540,8 +529,8 @@ def format_passcode_delete_payload(passcode: str) -> bytes:
         raise ValueError(f"Invalid passcode format: {passcode}")
 
 
-def parse_passcode_records(payload: bytes) -> list[dict[str, Any]]:
-    """Parse SSM_OS3_PASSCODE_NOTIFY records.
+def parse_credential_records(payload: bytes) -> list[dict[str, Any]]:
+    """Parse SSM_OS3_PASSCODE_NOTIFY, FINGERPRINT_NOTIFY, and CARD_NOTIFY records.
 
     Record layout:
     [cardType(1B), idLen(1B), id(idLen B), nameLen(1B), name(nameLen B)]
@@ -561,18 +550,20 @@ def parse_passcode_records(payload: bytes) -> list[dict[str, Any]]:
             name_bytes = rest[3 + id_len : 3 + id_len + name_len]
 
             # Format PIN string from digit bytes if all bytes <= 9
-            if all(b <= 9 for b in id_bytes):
-                pin_str = "".join(str(b) for b in id_bytes)
+            if id_len > 0 and all(b <= 9 for b in id_bytes):
+                id_str = "".join(str(b) for b in id_bytes)
             else:
-                pin_str = id_bytes.hex()
+                id_str = id_bytes.hex()
             name_str = name_bytes.decode("utf-8", errors="ignore").strip()
 
             records.append(
                 {
                     "type": card_type,
-                    "passcode": pin_str,
-                    "passcode_id": id_bytes.hex(),
+                    "id": id_str,
+                    "id_hex": id_bytes.hex(),
                     "name": name_str,
+                    "passcode": id_str,
+                    "passcode_id": id_bytes.hex(),
                 }
             )
             record_size = 1 + 1 + id_len + 1 + name_len
@@ -582,3 +573,6 @@ def parse_passcode_records(payload: bytes) -> list[dict[str, Any]]:
         except Exception:
             break
     return records
+
+
+parse_passcode_records = parse_credential_records

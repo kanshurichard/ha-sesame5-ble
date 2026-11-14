@@ -201,9 +201,9 @@ class SesameTouchPasswordCountSensor(CoordinatorEntity[Sesame5Coordinator], Sens
     @property
     def native_value(self) -> int | None:
         data = self.coordinator.data
-        if not data or not data.mech_status:
+        if not data:
             return None
-        return data.mech_status.password_count
+        return data.passcode_count
 
 
 class SesameTouchFingerprintCountSensor(CoordinatorEntity[Sesame5Coordinator], SensorEntity):
@@ -223,9 +223,9 @@ class SesameTouchFingerprintCountSensor(CoordinatorEntity[Sesame5Coordinator], S
     @property
     def native_value(self) -> int | None:
         data = self.coordinator.data
-        if not data or not data.mech_status:
+        if not data:
             return None
-        return data.mech_status.fingerprint_count
+        return data.fingerprint_count
 
 
 class SesameTouchCardCountSensor(CoordinatorEntity[Sesame5Coordinator], SensorEntity):
@@ -245,6 +245,6 @@ class SesameTouchCardCountSensor(CoordinatorEntity[Sesame5Coordinator], SensorEn
     @property
     def native_value(self) -> int | None:
         data = self.coordinator.data
-        if not data or not data.mech_status:
+        if not data:
             return None
-        return data.mech_status.card_count
+        return data.card_count
