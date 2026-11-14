@@ -104,5 +104,69 @@
         "name": "モーター動作中"
       }
     }
+  },
+  "services": {
+    "add_passcode": {
+      "name": "暗証番号の追加",
+      "description": "セサミタッチ / キーパッドに暗証番号を登録します。有効期間付きの一時暗証番号や、1回解錠後に自動削除されるワンタイム暗証番号に対応しています。",
+      "fields": {
+        "device_id": {
+          "name": "デバイス",
+          "description": "対象のキーパッドデバイス（任意）。"
+        },
+        "address": {
+          "name": "Bluetooth MAC アドレス",
+          "description": "キーパッドの Bluetooth MAC アドレス（任意）。"
+        },
+        "passcode": {
+          "name": "暗証番号",
+          "description": "4〜16桁の数字暗証番号。"
+        },
+        "name": {
+          "name": "暗証番号名",
+          "description": "暗証番号の識別名（ゲスト、清掃、配達など）。"
+        },
+        "duration": {
+          "name": "有効期間（秒）",
+          "description": "一時暗証番号の有効時間（秒）。期限切れ後に自動削除されます。無期限の場合は空欄にしてください。"
+        },
+        "one_time": {
+          "name": "1回解錠後に自動削除",
+          "description": "有効にすると、この暗証番号で1回解錠された後にキーパッドから自動削除されます。"
+        }
+      }
+    },
+    "delete_passcode": {
+      "name": "暗証番号の削除",
+      "description": "セサミタッチ / キーパッドから指定の暗証番号を削除します。",
+      "fields": {
+        "device_id": {
+          "name": "デバイス",
+          "description": "対象のキーパッドデバイス（任意）。"
+        },
+        "address": {
+          "name": "Bluetooth MAC アドレス",
+          "description": "キーパッドの Bluetooth MAC アドレス（任意）。"
+        },
+        "passcode": {
+          "name": "暗証番号またはID",
+          "description": "削除する暗証番号（例: 123456）または 16進数ID。"
+        }
+      }
+    },
+    "get_passcodes": {
+      "name": "暗証番号一覧の取得",
+      "description": "セサミタッチ / キーパッドに現在登録されている暗証番号の一覧を取得します。",
+      "fields": {
+        "device_id": {
+          "name": "デバイス",
+          "description": "対象のキーパッドデバイス（任意）。"
+        },
+        "address": {
+          "name": "Bluetooth MAC アドレス",
+          "description": "キーパッドの Bluetooth MAC アドレス（任意）。"
+        }
+      }
+    }
   }
 }

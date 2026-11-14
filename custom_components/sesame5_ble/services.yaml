@@ -1,40 +1,40 @@
 add_passcode:
-  name: 添加密码
-  description: 向 Sesame Touch / 密码键盘添加密码，支持设置有效时长的临时密码以及开锁一次后自动删除的单次密码。
+  name: Add Passcode
+  description: Add a passcode to a Sesame Touch / Keypad device, supporting temporary passcodes with an expiry duration and one-time passcodes that auto-delete after first unlock.
   fields:
     device_id:
-      name: 设备
-      description: 目标密码键盘设备（可选）。
+      name: Device
+      description: Target keypad device (optional).
       required: false
       selector:
         device:
           integration: sesame5_ble
     address:
-      name: 蓝牙 MAC 地址
-      description: 键盘设备的蓝牙 MAC 地址（可选）。
+      name: Bluetooth MAC Address
+      description: Bluetooth MAC address of the keypad (optional).
       required: false
       example: "AA:BB:CC:DD:EE:FF"
       selector:
         text:
     passcode:
-      name: 密码
-      description: 4 到 16 位数字密码。
+      name: Passcode
+      description: 4 to 16 digit numerical passcode.
       required: true
       example: "123456"
       selector:
         text:
           type: text
     name:
-      name: 密码备注名称
-      description: 密码的备注名称（如访客、保洁、快递等）。
+      name: Passcode Name
+      description: Name or label for the passcode (e.g. Guest, Cleaner, Delivery).
       required: false
       default: "HA Temp"
-      example: "保洁阿姨"
+      example: "Cleaner"
       selector:
         text:
     duration:
-      name: 有效时长（秒）
-      description: 临时密码有效时间（单位：秒）。超时后系统将自动从密码键盘中删除此密码。如需永久有效请留空。
+      name: Duration (Seconds)
+      description: Validity duration in seconds. The system will automatically remove this passcode from the keypad after the time expires. Leave empty for permanent.
       required: false
       example: 3600
       selector:
@@ -44,53 +44,53 @@ add_passcode:
           unit_of_measurement: seconds
           mode: box
     one_time:
-      name: 单次开锁后自动删除
-      description: 开启后，当该密码被成功使用开锁一次后，系统将自动从密码键盘中删除此密码。
+      name: Auto-delete After One Use
+      description: When enabled, this passcode will be automatically deleted from the keypad after it is successfully used once to unlock the door.
       required: false
       default: false
       selector:
         boolean:
 
 delete_passcode:
-  name: 删除密码
-  description: 从 Sesame Touch / 密码键盘中删除指定密码。
+  name: Delete Passcode
+  description: Delete a specific passcode from a Sesame Touch / Keypad device.
   fields:
     device_id:
-      name: 设备
-      description: 目标密码键盘设备（可选）。
+      name: Device
+      description: Target keypad device (optional).
       required: false
       selector:
         device:
           integration: sesame5_ble
     address:
-      name: 蓝牙 MAC 地址
-      description: 键盘设备的蓝牙 MAC 地址（可选）。
+      name: Bluetooth MAC Address
+      description: Bluetooth MAC address of the keypad (optional).
       required: false
       example: "AA:BB:CC:DD:EE:FF"
       selector:
         text:
     passcode:
-      name: 密码或密码ID
-      description: 要删除的密码数字（如 123456）或 16 进制 ID。
+      name: Passcode or Passcode ID
+      description: Passcode digits (e.g. 123456) or hex ID to delete.
       required: true
       example: "123456"
       selector:
         text:
 
 get_passcodes:
-  name: 获取密码列表
-  description: 从 Sesame Touch / 密码键盘读取当前已登记的所有密码列表。
+  name: Get Passcode List
+  description: Retrieve all registered passcodes from a Sesame Touch / Keypad device.
   fields:
     device_id:
-      name: 设备
-      description: 目标密码键盘设备（可选）。
+      name: Device
+      description: Target keypad device (optional).
       required: false
       selector:
         device:
           integration: sesame5_ble
     address:
-      name: 蓝牙 MAC 地址
-      description: 键盘设备的蓝牙 MAC 地址（可选）。
+      name: Bluetooth MAC Address
+      description: Bluetooth MAC address of the keypad (optional).
       required: false
       example: "AA:BB:CC:DD:EE:FF"
       selector:

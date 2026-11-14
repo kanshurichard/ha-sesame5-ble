@@ -1,0 +1,25 @@
+name: Release
+
+on:
+  release:
+    types: [published]
+
+jobs:
+  release:
+    name: Upload Release Asset
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Create ZIP archive for HACS
+        run: |
+          cd "${{ github.workspace }}/custom_components"
+          zip -r "${{ github.workspace }}/sesame5_ble.zip" sesame5_ble/
+
+      - name: Upload zip to Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ${{ github.workspace }}/sesame5_ble.zip
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -104,5 +104,69 @@
         "name": "Motor Active"
       }
     }
+  },
+  "services": {
+    "add_passcode": {
+      "name": "Add Passcode",
+      "description": "Add a passcode to a Sesame Touch / Keypad device, supporting temporary passcodes with an expiry duration and one-time passcodes that auto-delete after first unlock.",
+      "fields": {
+        "device_id": {
+          "name": "Device",
+          "description": "Target keypad device (optional)."
+        },
+        "address": {
+          "name": "Bluetooth MAC Address",
+          "description": "Bluetooth MAC address of the keypad (optional)."
+        },
+        "passcode": {
+          "name": "Passcode",
+          "description": "4 to 16 digit numerical passcode."
+        },
+        "name": {
+          "name": "Passcode Name",
+          "description": "Name or label for the passcode (e.g. Guest, Cleaner, Delivery)."
+        },
+        "duration": {
+          "name": "Duration (Seconds)",
+          "description": "Validity duration in seconds. The system will automatically remove this passcode after expiration. Leave empty for permanent."
+        },
+        "one_time": {
+          "name": "Auto-delete After One Use",
+          "description": "When enabled, this passcode will be automatically deleted after first successful unlock."
+        }
+      }
+    },
+    "delete_passcode": {
+      "name": "Delete Passcode",
+      "description": "Delete a specific passcode from a Sesame Touch / Keypad device.",
+      "fields": {
+        "device_id": {
+          "name": "Device",
+          "description": "Target keypad device (optional)."
+        },
+        "address": {
+          "name": "Bluetooth MAC Address",
+          "description": "Bluetooth MAC address of the keypad (optional)."
+        },
+        "passcode": {
+          "name": "Passcode or Passcode ID",
+          "description": "Passcode digits (e.g. 123456) or hex ID to delete."
+        }
+      }
+    },
+    "get_passcodes": {
+      "name": "Get Passcode List",
+      "description": "Retrieve all registered passcodes from a Sesame Touch / Keypad device.",
+      "fields": {
+        "device_id": {
+          "name": "Device",
+          "description": "Target keypad device (optional)."
+        },
+        "address": {
+          "name": "Bluetooth MAC Address",
+          "description": "Bluetooth MAC address of the keypad (optional)."
+        }
+      }
+    }
   }
 }

@@ -1,7 +1,7 @@
 {
   "name": "Sesame 5 BLE",
   "content_in_root": false,
-  "domains": ["lock", "sensor", "binary_sensor"],
-  "country": ["JP", "US", "TW", "CN"],
-  "homeassistant": "2024.1.0"
+  "filename": "sesame5_ble",
+  "render_readme": true,
+  "homeassistant": "2026.1.0"
 }
