@@ -87,7 +87,29 @@ def _is_keypad_model(model_id: int | None, model_name: str | None = None) -> boo
         return True
     if model_name:
         name_lower = model_name.lower()
-        if "touch" in name_lower or "keypad" in name_lower:
+        if "touch" in name_lower or "keypad" in name_lower or "键盘" in name_lower:
+            return True
+    return False
+
+
+def _is_entry_keypad(entry: config_entries.ConfigEntry) -> bool:
+    """Check if config entry represents a keypad/touch device."""
+    data = getattr(entry, "data", {})
+    options = getattr(entry, "options", {})
+    model_id = data.get(CONF_MODEL_ID) if isinstance(data, dict) else None
+    model_name = data.get(CONF_MODEL, "") if isinstance(data, dict) else ""
+    if _is_keypad_model(model_id, model_name):
+        return True
+    title = str(getattr(entry, "title", ""))
+    if "touch" in title.lower() or "keypad" in title.lower() or "键盘" in title:
+        return True
+    if isinstance(data, dict) and CONF_LINKED_LOCK in data:
+        return True
+    if isinstance(options, dict) and CONF_LINKED_LOCK in options:
+        return True
+    if hasattr(entry, "runtime_data") and entry.runtime_data:
+        device = getattr(entry.runtime_data, "device", None)
+        if device and getattr(device, "is_keypad", False) is True:
             return True
     return False
 
@@ -104,9 +126,7 @@ def _get_configured_locks(hass: HomeAssistant, exclude_address: str | None = Non
         addr = entry.data.get(CONF_ADDRESS)
         if not addr or (exclude_address and addr.upper() == exclude_address.upper()):
             continue
-        model_id = entry.data.get(CONF_MODEL_ID)
-        model_name = entry.data.get(CONF_MODEL, "")
-        if _is_keypad_model(model_id, model_name):
+        if _is_entry_keypad(entry):
             continue
         options.append(
             {
@@ -332,12 +352,19 @@ class Sesame5ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 }
             )
 
+        step_id = "auth_keypad" if is_keypad else "auth"
         return self.async_show_form(
-            step_id="auth",
+            step_id=step_id,
             data_schema=schema,
             description_placeholders={"device_name": f"{self._selected_model} ({address})"},
             errors=errors,
         )
+
+    async def async_step_auth_keypad(
+        self, user_input: dict[str, Any] | None = None
+    ) -> FlowResult:
+        """Handle auth step specifically for keypad devices."""
+        return await self.async_step_auth(user_input)
 
     @staticmethod
     @callback
@@ -354,44 +381,11 @@ class Sesame5OptionsFlowHandler(config_entries.OptionsFlow):
         self, user_input: dict[str, Any] | None = None
     ) -> FlowResult:
         """Manage integration options."""
+        if _is_entry_keypad(self.config_entry):
+            return await self.async_step_keypad(user_input)
+
         if user_input is not None:
             return self.async_create_entry(title="", data=user_input)
-
-        model_id = self.config_entry.data.get(CONF_MODEL_ID)
-        model_name = self.config_entry.data.get(CONF_MODEL, "")
-        is_keypad = _is_keypad_model(model_id, model_name)
-        if not is_keypad and hasattr(self.config_entry, "runtime_data") and self.config_entry.runtime_data:
-            is_keypad = getattr(self.config_entry.runtime_data.device, "is_keypad", False)
-
-        current_read_only = self.config_entry.options.get(
-            CONF_READ_ONLY,
-            self.config_entry.data.get(CONF_READ_ONLY, DEFAULT_READ_ONLY),
-        )
-
-        if is_keypad:
-            current_linked_lock = self.config_entry.options.get(
-                CONF_LINKED_LOCK,
-                self.config_entry.data.get(CONF_LINKED_LOCK, DEFAULT_LINKED_LOCK),
-            )
-            lock_options = _get_configured_locks(
-                self.hass,
-                exclude_address=self.config_entry.data.get(CONF_ADDRESS),
-            )
-            schema = vol.Schema(
-                {
-                    vol.Required(
-                        CONF_LINKED_LOCK,
-                        default=current_linked_lock,
-                    ): SelectSelector(
-                        SelectSelectorConfig(
-                            options=lock_options,
-                            mode=SelectSelectorMode.DROPDOWN,
-                        )
-                    ),
-                    vol.Optional(CONF_READ_ONLY, default=current_read_only): bool,
-                }
-            )
-            return self.async_show_form(step_id="init", data_schema=schema)
 
         current_mode = self.config_entry.options.get(
             CONF_CONNECTION_MODE,
@@ -404,6 +398,10 @@ class Sesame5OptionsFlowHandler(config_entries.OptionsFlow):
         current_tag = self.config_entry.options.get(
             CONF_HISTORY_TAG,
             self.config_entry.data.get(CONF_HISTORY_TAG, DEFAULT_HISTORY_TAG),
+        )
+        current_read_only = self.config_entry.options.get(
+            CONF_READ_ONLY,
+            self.config_entry.data.get(CONF_READ_ONLY, DEFAULT_READ_ONLY),
         )
 
         mode_options = [
@@ -437,3 +435,38 @@ class Sesame5OptionsFlowHandler(config_entries.OptionsFlow):
         )
 
         return self.async_show_form(step_id="init", data_schema=schema)
+
+    async def async_step_keypad(
+        self, user_input: dict[str, Any] | None = None
+    ) -> FlowResult:
+        """Manage keypad options."""
+        if user_input is not None:
+            return self.async_create_entry(title="", data=user_input)
+
+        current_read_only = self.config_entry.options.get(
+            CONF_READ_ONLY,
+            self.config_entry.data.get(CONF_READ_ONLY, DEFAULT_READ_ONLY),
+        )
+        current_linked_lock = self.config_entry.options.get(
+            CONF_LINKED_LOCK,
+            self.config_entry.data.get(CONF_LINKED_LOCK, DEFAULT_LINKED_LOCK),
+        )
+        lock_options = _get_configured_locks(
+            self.hass,
+            exclude_address=self.config_entry.data.get(CONF_ADDRESS),
+        )
+        schema = vol.Schema(
+            {
+                vol.Required(
+                    CONF_LINKED_LOCK,
+                    default=current_linked_lock,
+                ): SelectSelector(
+                    SelectSelectorConfig(
+                        options=lock_options,
+                        mode=SelectSelectorMode.DROPDOWN,
+                    )
+                ),
+                vol.Optional(CONF_READ_ONLY, default=current_read_only): bool,
+            }
+        )
+        return self.async_show_form(step_id="keypad", data_schema=schema)

@@ -17,14 +17,23 @@
         }
       },
       "auth": {
-        "title": "Authenticate with {device_name}",
-        "description": "Enter the Secret Key from your Sesame app.\n\n[Locks - Real-time Persistent Connection (Recommended)]: Keeps BLE connected for instant status updates, unlock automations, and one-time passcode auto-deletion.\n[Keypads]: Uses power-saving on-demand connection and links to a Sesame lock for one-time passcode deletion.\n[Power-Saving Mode Limitations]: Connects only on-demand or periodically. Real-time manual unlock detection and instant one-time passcode deletion will be delayed or unavailable.",
+        "title": "Authenticate Smart Lock: {device_name}",
+        "description": "Enter the Secret Key from your Sesame app.\n\n[Real-time Persistent Connection (Recommended)]: Keeps BLE connected for instant status updates, unlock automations, and one-time passcode auto-deletion.\n[Power-Saving Mode Limitations]: Connects only on-demand or periodically. Real-time manual unlock detection and instant one-time passcode deletion will be delayed or unavailable.\n[Read-Only Mode]: Prevents remote lock and unlock operations.",
         "data": {
           "secret_key": "Secret Key / QR Code URL",
           "connection_mode": "Connection Mode",
-          "linked_lock": "Linked Sesame Lock (for one-time passcode auto-deletion)",
           "history_tag": "History Tag (Name shown in App log)",
           "read_only": "Read-only mode (Monitor state and battery only; disable remote operations)"
+        }
+      },
+      "auth_keypad": {
+        "title": "Authenticate Keypad: {device_name}",
+        "description": "Enter the Secret Key from your Sesame app.\n\n[Power-Saving Architecture]: Keypads do not use persistent long connection and only connect on demand to maximize battery life.\n[Lock Binding]: Select the linked Sesame lock. When this lock is unlocked via password, the keypad will automatically connect and delete the one-time passcode immediately.\n[Read-Only Mode]: Prevents adding or deleting passcodes via HA to avoid accidental modifications.",
+        "data": {
+          "secret_key": "Secret Key / QR Code URL",
+          "linked_lock": "Linked Sesame Lock (for one-time passcode auto-deletion)",
+          "history_tag": "History Tag (Name shown in App log)",
+          "read_only": "Read-only mode (Disables remote passcode management)"
         }
       }
     },
@@ -41,14 +50,21 @@
   "options": {
     "step": {
       "init": {
-        "title": "Sesame 5 BLE Options",
-        "description": "[Locks]: Choose between Real-time persistent connection (recommended for automations) or power-saving mode.\n[Keypads]: Connects on-demand to save battery; configure linked lock for one-time passcode auto-deletion.\n[Read-Only Mode]: Prevents remote unlock, lock, or passcode modifications.",
+        "title": "Sesame Smart Lock Options",
+        "description": "[Real-time Mode (Recommended)]: Maintains persistent BLE connection for instant state feedback, automations, and one-time passcode auto-deletion.\n[Power-Saving Mode Limitations]: Disconnects after idle. Real-time physical unlock events cannot be pushed to HA until the next connection.\n[Read-Only Mode]: Prevents remote unlock and lock operations.",
         "data": {
-          "connection_mode": "Connection Mode (Locks)",
-          "linked_lock": "Linked Sesame Lock (Keypads)",
-          "refresh_interval": "Periodic refresh interval in minutes (Locks Power-Saving Mode only; 0 = on-demand)",
+          "connection_mode": "Connection Mode",
+          "refresh_interval": "Periodic refresh interval in minutes (Power-Saving Mode only; 0 = on-demand)",
           "history_tag": "History Tag (Name shown in App unlock history)",
-          "read_only": "Read-only mode (Disables remote lock/unlock/passcode edit)"
+          "read_only": "Read-only mode (Disables remote lock/unlock)"
+        }
+      },
+      "keypad": {
+        "title": "Sesame Keypad Options",
+        "description": "[Power-Saving Architecture]: Keypads do not use persistent long connection and only connect on demand to maximize battery life.\n[Lock Binding]: Select the linked Sesame lock. When this lock is unlocked via password, the keypad will automatically connect and delete the one-time passcode immediately.\n[Read-Only Mode]: Prevents adding or deleting passcodes via HA to avoid accidental modifications.",
+        "data": {
+          "linked_lock": "Linked Sesame Lock (for one-time passcode auto-deletion)",
+          "read_only": "Read-only mode (Disables remote passcode management)"
         }
       }
     }

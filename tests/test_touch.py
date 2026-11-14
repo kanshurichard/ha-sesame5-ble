@@ -308,6 +308,46 @@ class TestCoordinatorPasscodes(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(locks[1]["value"], "11:22:33:44:55:66")
         self.assertIn("Front Door", locks[1]["label"])
 
+    async def test_options_flow_lock_vs_keypad(self):
+        """Test options flow shows step 'keypad' for Touch devices and step 'init' for Locks."""
+        from custom_components.sesame5_ble.config_flow import Sesame5OptionsFlowHandler
+
+        # 1. Keypad options flow
+        keypad_handler = Sesame5OptionsFlowHandler()
+        keypad_handler.hass = self.hass
+        keypad_entry = MagicMock()
+        keypad_entry.data = {
+            "address": "AA:BB:CC:DD:EE:FF",
+            "model_id": ProductModel.SESAME_TOUCH_2.value,
+            "model": "Sesame Touch 2",
+        }
+        keypad_entry.options = {}
+        keypad_entry.title = "Sesame Touch 2"
+        keypad_entry.runtime_data = None
+        keypad_handler.config_entry = keypad_entry
+
+        result_keypad = await keypad_handler.async_step_init()
+        self.assertEqual(result_keypad["type"], "form")
+        self.assertEqual(result_keypad["step_id"], "keypad")
+
+        # 2. Lock options flow
+        lock_handler = Sesame5OptionsFlowHandler()
+        lock_handler.hass = self.hass
+        lock_entry = MagicMock()
+        lock_entry.data = {
+            "address": "11:22:33:44:55:66",
+            "model_id": ProductModel.SESAME_5.value,
+            "model": "Sesame 5",
+        }
+        lock_entry.options = {}
+        lock_entry.title = "Sesame 5"
+        lock_entry.runtime_data = None
+        lock_handler.config_entry = lock_entry
+
+        result_lock = await lock_handler.async_step_init()
+        self.assertEqual(result_lock["type"], "form")
+        self.assertEqual(result_lock["step_id"], "init")
+
 
 if __name__ == "__main__":
     unittest.main()

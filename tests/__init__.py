@@ -60,3 +60,20 @@ class MockDataUpdateCoordinator:
 
 
 sys.modules["homeassistant.helpers.update_coordinator"].DataUpdateCoordinator = MockDataUpdateCoordinator
+
+
+class MockOptionsFlow:
+    def async_show_form(self, step_id=None, data_schema=None, errors=None, description_placeholders=None):
+        return {
+            "type": "form",
+            "step_id": step_id,
+            "data_schema": data_schema,
+            "errors": errors,
+        }
+
+    def async_create_entry(self, title="", data=None):
+        return {"type": "create_entry", "title": title, "data": data}
+
+
+sys.modules["homeassistant"].config_entries = sys.modules["homeassistant.config_entries"]
+sys.modules["homeassistant.config_entries"].OptionsFlow = MockOptionsFlow
