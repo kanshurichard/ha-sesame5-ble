@@ -249,14 +249,11 @@ class Sesame5ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     def async_get_options_flow(
         config_entry: config_entries.ConfigEntry,
     ) -> config_entries.OptionsFlow:
-        return Sesame5OptionsFlowHandler(config_entry)
+        return Sesame5OptionsFlowHandler()
 
 
 class Sesame5OptionsFlowHandler(config_entries.OptionsFlow):
     """Handle options for Sesame 5 BLE integration."""
-
-    def __init__(self, config_entry: config_entries.ConfigEntry) -> None:
-        self.config_entry = config_entry
 
     async def async_step_init(
         self, user_input: dict[str, Any] | None = None
