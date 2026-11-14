@@ -26,6 +26,7 @@ from .const import (
     CONF_CONNECTION_MODE,
     CONF_DEVICE_ID,
     CONF_HISTORY_TAG,
+    CONF_LINKED_LOCK,
     CONF_MODEL,
     CONF_MODEL_ID,
     CONF_READ_ONLY,
@@ -35,11 +36,13 @@ from .const import (
     CONNECTION_MODE_REALTIME,
     DEFAULT_CONNECTION_MODE,
     DEFAULT_HISTORY_TAG,
+    DEFAULT_LINKED_LOCK,
     DEFAULT_READ_ONLY,
     DEFAULT_REFRESH_INTERVAL,
     DOMAIN,
     PRODUCT_NAMES,
     SERVICE_UUID,
+    TOUCH_MODELS,
 )
 from .device import Sesame5Device
 from .helpers import Sesame5Advertisement, parse_secret_key_input
@@ -76,6 +79,42 @@ def _scan_sesame5_devices(hass: HomeAssistant) -> list[dict[str, Any]]:
     # Sort strongest signal first
     devices.sort(key=lambda d: d.get("rssi", -100), reverse=True)
     return devices
+
+
+def _is_keypad_model(model_id: int | None, model_name: str | None = None) -> bool:
+    """Return True if model is a keypad/touch device."""
+    if model_id is not None and model_id in TOUCH_MODELS:
+        return True
+    if model_name:
+        name_lower = model_name.lower()
+        if "touch" in name_lower or "keypad" in name_lower:
+            return True
+    return False
+
+
+def _get_configured_locks(hass: HomeAssistant, exclude_address: str | None = None) -> list[dict[str, str]]:
+    """Return list of configured Sesame lock entries for keypad binding dropdown."""
+    options = [
+        {
+            "value": DEFAULT_LINKED_LOCK,
+            "label": "自动关联（响应任何匹配的 Sesame 门锁开锁事件）",
+        }
+    ]
+    for entry in hass.config_entries.async_entries(DOMAIN):
+        addr = entry.data.get(CONF_ADDRESS)
+        if not addr or (exclude_address and addr.upper() == exclude_address.upper()):
+            continue
+        model_id = entry.data.get(CONF_MODEL_ID)
+        model_name = entry.data.get(CONF_MODEL, "")
+        if _is_keypad_model(model_id, model_name):
+            continue
+        options.append(
+            {
+                "value": addr,
+                "label": f"{entry.title} ({addr})",
+            }
+        )
+    return options
 
 
 class Sesame5ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
@@ -180,6 +219,8 @@ class Sesame5ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         address = self._selected_address
         assert address is not None
 
+        is_keypad = _is_keypad_model(self._selected_model_id, self._selected_model)
+
         if user_input is not None:
             raw_key_input = user_input[CONF_SECRET_KEY]
             history_tag = user_input.get(CONF_HISTORY_TAG, DEFAULT_HISTORY_TAG).strip() or DEFAULT_HISTORY_TAG
@@ -191,6 +232,7 @@ class Sesame5ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 if model_id and model_id in PRODUCT_NAMES:
                     self._selected_model = PRODUCT_NAMES[model_id]
                     self._selected_model_id = model_id
+                    is_keypad = _is_keypad_model(model_id, self._selected_model)
             except ValueError as exc:
                 LOGGER.warning("Invalid key input: %s", exc)
                 errors["base"] = "invalid_key_format"
@@ -203,11 +245,14 @@ class Sesame5ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     secret_key=secret_key_bytes,
                     hass=self.hass,
                     history_tag=history_tag,
+                    model_id=self._selected_model_id,
                 )
 
                 try:
                     LOGGER.debug("[%s] Verifying authentication credentials", address)
                     await device.authenticate()
+                    if device.is_keypad:
+                        is_keypad = True
                 except TimeoutError:
                     errors["base"] = "cannot_connect"
                 except Exception as exc:
@@ -220,47 +265,72 @@ class Sesame5ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     await self.async_set_unique_id(address)
                     self._abort_if_unique_id_configured()
 
+                    entry_data = {
+                        CONF_ADDRESS: address,
+                        CONF_DEVICE_ID: self._selected_device_id or address,
+                        CONF_SECRET_KEY: secret_key_bytes.hex(),
+                        CONF_MODEL: self._selected_model,
+                        CONF_MODEL_ID: self._selected_model_id,
+                        CONF_HISTORY_TAG: history_tag,
+                        CONF_READ_ONLY: user_input.get(CONF_READ_ONLY, DEFAULT_READ_ONLY),
+                    }
+                    if is_keypad:
+                        entry_data[CONF_CONNECTION_MODE] = CONNECTION_MODE_POWER_SAVING
+                        entry_data[CONF_LINKED_LOCK] = user_input.get(CONF_LINKED_LOCK, DEFAULT_LINKED_LOCK)
+                    else:
+                        entry_data[CONF_CONNECTION_MODE] = user_input.get(CONF_CONNECTION_MODE, DEFAULT_CONNECTION_MODE)
+
                     return self.async_create_entry(
                         title=f"{self._selected_model} ({address[-5:].replace(':', '')})",
-                        data={
-                            CONF_ADDRESS: address,
-                            CONF_DEVICE_ID: self._selected_device_id or address,
-                            CONF_SECRET_KEY: secret_key_bytes.hex(),
-                            CONF_MODEL: self._selected_model,
-                            CONF_MODEL_ID: self._selected_model_id,
-                            CONF_HISTORY_TAG: history_tag,
-                            CONF_READ_ONLY: user_input.get(CONF_READ_ONLY, DEFAULT_READ_ONLY),
-                            CONF_CONNECTION_MODE: user_input.get(CONF_CONNECTION_MODE, DEFAULT_CONNECTION_MODE),
-                        },
+                        data=entry_data,
                     )
 
-        mode_options = [
-            {
-                "value": CONNECTION_MODE_REALTIME,
-                "label": "实时长连接模式（保持蓝牙常连，秒级响应状态变化，支持开锁自动化与单次密码即时失效，推荐）",
-            },
-            {
-                "value": CONNECTION_MODE_POWER_SAVING,
-                "label": "省电模式（按需/定期连线，无法实时感知开关锁，开锁自动化与单次密码即时失效将受限）",
-            },
-        ]
+        if is_keypad:
+            lock_options = _get_configured_locks(self.hass, address)
+            schema = vol.Schema(
+                {
+                    vol.Required(CONF_SECRET_KEY): str,
+                    vol.Required(
+                        CONF_LINKED_LOCK,
+                        default=DEFAULT_LINKED_LOCK,
+                    ): SelectSelector(
+                        SelectSelectorConfig(
+                            options=lock_options,
+                            mode=SelectSelectorMode.DROPDOWN,
+                        )
+                    ),
+                    vol.Optional(CONF_HISTORY_TAG, default=DEFAULT_HISTORY_TAG): str,
+                    vol.Optional(CONF_READ_ONLY, default=DEFAULT_READ_ONLY): bool,
+                }
+            )
+        else:
+            mode_options = [
+                {
+                    "value": CONNECTION_MODE_REALTIME,
+                    "label": "实时长连接模式（保持蓝牙常连，秒级响应状态变化，支持开锁自动化与单次密码即时失效，推荐）",
+                },
+                {
+                    "value": CONNECTION_MODE_POWER_SAVING,
+                    "label": "省电模式（按需/定期连线，无法实时感知开关锁，开锁自动化与单次密码即时失效将受限）",
+                },
+            ]
 
-        schema = vol.Schema(
-            {
-                vol.Required(CONF_SECRET_KEY): str,
-                vol.Required(
-                    CONF_CONNECTION_MODE,
-                    default=DEFAULT_CONNECTION_MODE,
-                ): SelectSelector(
-                    SelectSelectorConfig(
-                        options=mode_options,
-                        mode=SelectSelectorMode.DROPDOWN,
-                    )
-                ),
-                vol.Optional(CONF_HISTORY_TAG, default=DEFAULT_HISTORY_TAG): str,
-                vol.Optional(CONF_READ_ONLY, default=DEFAULT_READ_ONLY): bool,
-            }
-        )
+            schema = vol.Schema(
+                {
+                    vol.Required(CONF_SECRET_KEY): str,
+                    vol.Required(
+                        CONF_CONNECTION_MODE,
+                        default=DEFAULT_CONNECTION_MODE,
+                    ): SelectSelector(
+                        SelectSelectorConfig(
+                            options=mode_options,
+                            mode=SelectSelectorMode.DROPDOWN,
+                        )
+                    ),
+                    vol.Optional(CONF_HISTORY_TAG, default=DEFAULT_HISTORY_TAG): str,
+                    vol.Optional(CONF_READ_ONLY, default=DEFAULT_READ_ONLY): bool,
+                }
+            )
 
         return self.async_show_form(
             step_id="auth",
@@ -287,6 +357,42 @@ class Sesame5OptionsFlowHandler(config_entries.OptionsFlow):
         if user_input is not None:
             return self.async_create_entry(title="", data=user_input)
 
+        model_id = self.config_entry.data.get(CONF_MODEL_ID)
+        model_name = self.config_entry.data.get(CONF_MODEL, "")
+        is_keypad = _is_keypad_model(model_id, model_name)
+        if not is_keypad and hasattr(self.config_entry, "runtime_data") and self.config_entry.runtime_data:
+            is_keypad = getattr(self.config_entry.runtime_data.device, "is_keypad", False)
+
+        current_read_only = self.config_entry.options.get(
+            CONF_READ_ONLY,
+            self.config_entry.data.get(CONF_READ_ONLY, DEFAULT_READ_ONLY),
+        )
+
+        if is_keypad:
+            current_linked_lock = self.config_entry.options.get(
+                CONF_LINKED_LOCK,
+                self.config_entry.data.get(CONF_LINKED_LOCK, DEFAULT_LINKED_LOCK),
+            )
+            lock_options = _get_configured_locks(
+                self.hass,
+                exclude_address=self.config_entry.data.get(CONF_ADDRESS),
+            )
+            schema = vol.Schema(
+                {
+                    vol.Required(
+                        CONF_LINKED_LOCK,
+                        default=current_linked_lock,
+                    ): SelectSelector(
+                        SelectSelectorConfig(
+                            options=lock_options,
+                            mode=SelectSelectorMode.DROPDOWN,
+                        )
+                    ),
+                    vol.Optional(CONF_READ_ONLY, default=current_read_only): bool,
+                }
+            )
+            return self.async_show_form(step_id="init", data_schema=schema)
+
         current_mode = self.config_entry.options.get(
             CONF_CONNECTION_MODE,
             self.config_entry.data.get(CONF_CONNECTION_MODE, DEFAULT_CONNECTION_MODE),
@@ -298,10 +404,6 @@ class Sesame5OptionsFlowHandler(config_entries.OptionsFlow):
         current_tag = self.config_entry.options.get(
             CONF_HISTORY_TAG,
             self.config_entry.data.get(CONF_HISTORY_TAG, DEFAULT_HISTORY_TAG),
-        )
-        current_read_only = self.config_entry.options.get(
-            CONF_READ_ONLY,
-            self.config_entry.data.get(CONF_READ_ONLY, DEFAULT_READ_ONLY),
         )
 
         mode_options = [

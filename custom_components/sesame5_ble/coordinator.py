@@ -19,12 +19,14 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, Upda
 from .const import (
     CONF_CONNECTION_MODE,
     CONF_HISTORY_TAG,
+    CONF_LINKED_LOCK,
     CONF_READ_ONLY,
     CONF_REFRESH_INTERVAL,
     CONNECTION_MODE_POWER_SAVING,
     CONNECTION_MODE_REALTIME,
     DEFAULT_CONNECTION_MODE,
     DEFAULT_HISTORY_TAG,
+    DEFAULT_LINKED_LOCK,
     DEFAULT_READ_ONLY,
     DEFAULT_REFRESH_INTERVAL,
     POWER_SAVING_IDLE_TIMEOUT,
@@ -101,6 +103,8 @@ class Sesame5Coordinator(DataUpdateCoordinator[Sesame5State]):
     @property
     def connection_mode(self) -> str:
         """Return 'realtime' or 'power_saving'."""
+        if self._device.is_keypad:
+            return CONNECTION_MODE_POWER_SAVING
         if self.config_entry:
             return self.config_entry.options.get(
                 CONF_CONNECTION_MODE,
@@ -111,7 +115,19 @@ class Sesame5Coordinator(DataUpdateCoordinator[Sesame5State]):
     @property
     def is_realtime_mode(self) -> bool:
         """Return True if persistent BLE long connection is enabled."""
+        if self._device.is_keypad:
+            return False
         return self.connection_mode == CONNECTION_MODE_REALTIME
+
+    @property
+    def linked_lock(self) -> str:
+        """Return address of linked lock or 'auto'."""
+        if self.config_entry:
+            return self.config_entry.options.get(
+                CONF_LINKED_LOCK,
+                self.config_entry.data.get(CONF_LINKED_LOCK, DEFAULT_LINKED_LOCK),
+            )
+        return DEFAULT_LINKED_LOCK
 
     @property
     def history_tag(self) -> str:
@@ -156,7 +172,11 @@ class Sesame5Coordinator(DataUpdateCoordinator[Sesame5State]):
         self.async_set_updated_data(self._current_state)
         if self._device.history:
             try:
-                async_dispatcher_send(self.hass, SIGNAL_SESAME_HISTORY_UPDATE, self._device.history)
+                async_dispatcher_send(
+                    self.hass,
+                    SIGNAL_SESAME_HISTORY_UPDATE,
+                    {"address": self.address, "history": self._device.history},
+                )
             except Exception:
                 pass
 
@@ -211,15 +231,42 @@ class Sesame5Coordinator(DataUpdateCoordinator[Sesame5State]):
         except Exception:
             pass
 
-    def _on_history_broadcast(self, history: Sesame5HistoryRecord) -> None:
+    def _on_history_broadcast(self, data: Any) -> None:
         """Handle history record broadcast from any lock in HA to detect password unlock."""
-        if history.action == "unlock" and history.history_tag_type == HistoryTagType.PASSWORD:
-            LOGGER.info(
-                "[%s] Detected password unlock event (tag: %s), checking one-time passcodes",
-                self.address,
-                history.tag_name or "unknown",
-            )
-            self.handle_one_time_unlock(history.tag_name)
+        # Keypads only: Locks do not need to process one-time passcode cleanup
+        if not self._device.is_keypad:
+            return
+
+        lock_address = None
+        history: Sesame5HistoryRecord | None = None
+        if isinstance(data, dict):
+            lock_address = data.get("address")
+            history = data.get("history")
+        elif isinstance(data, Sesame5HistoryRecord):
+            history = data
+
+        if not history or history.action != "unlock" or history.history_tag_type != HistoryTagType.PASSWORD:
+            return
+
+        # Check lock binding
+        linked = self.linked_lock
+        if linked and linked != DEFAULT_LINKED_LOCK:
+            if not lock_address or lock_address.strip().lower() != linked.strip().lower():
+                LOGGER.debug(
+                    "[%s] Ignoring unlock from %s because linked lock is %s",
+                    self.address,
+                    lock_address,
+                    linked,
+                )
+                return
+
+        LOGGER.info(
+            "[%s] Detected password unlock event from lock %s (tag: %s), checking one-time passcodes",
+            self.address,
+            lock_address or "unknown",
+            history.tag_name or "unknown",
+        )
+        self.handle_one_time_unlock(history.tag_name)
 
     def handle_one_time_unlock(self, tag_name: str | None = None) -> None:
         """Auto-delete any registered one-time passcodes matching the unlock event."""
@@ -234,6 +281,13 @@ class Sesame5Coordinator(DataUpdateCoordinator[Sesame5State]):
                 # If no tag name reported by lock history, auto-delete first active one-time passcode
                 to_delete.append(code)
                 break
+
+        # Fallback: if tag_name did not match specific passcode name/code, auto-delete the first active one-time passcode
+        if not to_delete and self._temp_passcodes:
+            for code, info in list(self._temp_passcodes.items()):
+                if info.get("one_time"):
+                    to_delete.append(code)
+                    break
 
         for code in to_delete:
             LOGGER.info("[%s] Auto-deleting one-time passcode '%s' after unlock", self.address, code)
@@ -359,7 +413,7 @@ class Sesame5Coordinator(DataUpdateCoordinator[Sesame5State]):
 
     def start_periodic_refresh(self) -> None:
         """Configure periodic status polling if in power-saving mode."""
-        if not self.config_entry or self.is_realtime_mode:
+        if not self.config_entry or self.is_realtime_mode or self._device.is_keypad:
             self.update_interval = None
             return
 

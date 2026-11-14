@@ -8,6 +8,7 @@ for mod in [
     "homeassistant.const",
     "homeassistant.core",
     "homeassistant.config_entries",
+    "homeassistant.data_entry_flow",
     "homeassistant.exceptions",
     "homeassistant.components",
     "homeassistant.components.lock",
@@ -38,6 +39,8 @@ for mod in [
 ]:
     if mod not in sys.modules:
         sys.modules[mod] = MagicMock()
+
+sys.modules["homeassistant.const"].CONF_ADDRESS = "address"
 
 
 class MockDataUpdateCoordinator:

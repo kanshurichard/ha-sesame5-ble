@@ -195,24 +195,118 @@ class TestCoordinatorPasscodes(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(len(task_created) > 0)
 
     async def test_connection_modes(self):
-        """Test default realtime mode vs power saving mode."""
-        # Default is realtime
-        self.assertTrue(self.coordinator.is_realtime_mode)
-        self.assertEqual(self.coordinator.connection_mode, "realtime")
-
-        # Switch to power saving
-        self.entry.options = {"connection_mode": "power_saving", "refresh_interval": 15}
+        """Test keypad vs lock connection modes."""
+        # Keypad must always report False for is_realtime_mode to save battery
         self.assertFalse(self.coordinator.is_realtime_mode)
         self.assertEqual(self.coordinator.connection_mode, "power_saving")
 
-        self.coordinator.apply_options_update()
-        self.assertIsNotNone(self.coordinator.update_interval)
+        # Now test a lock device
+        lock_device = MagicMock(spec=Sesame5Device)
+        lock_device.address = "AA:BB:CC:DD:EE:11"
+        lock_device.is_ready = True
+        lock_device.is_keypad = False
+        lock_device.mech_status = None
+        lock_device.mech_settings = None
+        lock_device.history = None
 
-        # Switch back to realtime
-        self.entry.options = {"connection_mode": "realtime"}
-        self.coordinator.apply_options_update()
-        self.assertIsNone(self.coordinator.update_interval)
-        self.assertTrue(self.coordinator.is_realtime_mode)
+        lock_entry = MagicMock()
+        lock_entry.data = {"read_only": False}
+        lock_entry.options = {}
+
+        lock_coordinator = Sesame5Coordinator(self.hass, lock_entry, lock_device)
+
+        # Default for lock is realtime
+        self.assertTrue(lock_coordinator.is_realtime_mode)
+        self.assertEqual(lock_coordinator.connection_mode, "realtime")
+
+        # Switch lock to power saving
+        lock_entry.options = {"connection_mode": "power_saving", "refresh_interval": 15}
+        self.assertFalse(lock_coordinator.is_realtime_mode)
+        self.assertEqual(lock_coordinator.connection_mode, "power_saving")
+
+        lock_coordinator.apply_options_update()
+        self.assertIsNotNone(lock_coordinator.update_interval)
+
+        # Switch lock back to realtime
+        lock_entry.options = {"connection_mode": "realtime"}
+        lock_coordinator.apply_options_update()
+        self.assertIsNone(lock_coordinator.update_interval)
+        self.assertTrue(lock_coordinator.is_realtime_mode)
+
+    async def test_linked_lock_filtering(self):
+        """Test keypad linked lock binding and filtering of history broadcasts."""
+        await self.coordinator.async_add_passcode("9999", name="LinkedGuest", one_time=True)
+        self.assertIn("9999", self.coordinator._temp_passcodes)
+
+        # Create dummy history record simulating a password unlock event
+        raw_hist = bytearray(35)
+        raw_hist[0] = 0
+        raw_hist[1:5] = struct.pack("<I", 1)
+        raw_hist[5] = HistoryType.BLE_UNLOCK.value
+        raw_hist[6:10] = struct.pack("<I", int(datetime.now(timezone.utc).timestamp()))
+        # tag_data starts at index 17 (1B len, 1B tag_type, 16B accessory_uuid)
+        raw_hist[17] = 0
+        raw_hist[18] = HistoryTagType.PASSWORD.value
+        raw_hist[19:35] = b"\x01" * 16
+        record = Sesame5HistoryRecord(bytes(raw_hist))
+
+        # 1. Keypad bound specifically to Lock 1 (11:11:11:11:11:11)
+        self.entry.options = {"linked_lock": "11:11:11:11:11:11"}
+        self.assertEqual(self.coordinator.linked_lock, "11:11:11:11:11:11")
+
+        with patch.object(self.coordinator, "handle_one_time_unlock") as mock_handle:
+            # Broadcast from different lock 22:22:22:22:22:22 -> should be ignored
+            self.coordinator._on_history_broadcast({"address": "22:22:22:22:22:22", "history": record})
+            mock_handle.assert_not_called()
+
+            # Broadcast from bound lock 11:11:11:11:11:11 -> should trigger
+            self.coordinator._on_history_broadcast({"address": "11:11:11:11:11:11", "history": record})
+            mock_handle.assert_called_once()
+
+        # 2. Keypad bound to 'auto' -> accepts unlock from any lock
+        self.entry.options = {"linked_lock": "auto"}
+        self.assertEqual(self.coordinator.linked_lock, "auto")
+
+        with patch.object(self.coordinator, "handle_one_time_unlock") as mock_handle:
+            self.coordinator._on_history_broadcast({"address": "33:33:33:33:33:33", "history": record})
+            mock_handle.assert_called_once()
+
+        # 3. Lock coordinator should ignore history broadcasts (only keypads process them)
+        lock_device = MagicMock(spec=Sesame5Device)
+        lock_device.address = "11:11:11:11:11:11"
+        lock_device.is_keypad = False
+        lock_coordinator = Sesame5Coordinator(self.hass, self.entry, lock_device)
+        with patch.object(lock_coordinator, "handle_one_time_unlock") as mock_handle:
+            lock_coordinator._on_history_broadcast({"address": "11:11:11:11:11:11", "history": record})
+            mock_handle.assert_not_called()
+
+    def test_get_configured_locks(self):
+        """Test _get_configured_locks returns only locks and excludes keypads and self."""
+        from custom_components.sesame5_ble.config_flow import _get_configured_locks
+
+        mock_entry_lock = MagicMock()
+        mock_entry_lock.data = {
+            "address": "11:22:33:44:55:66",
+            "model_id": ProductModel.SESAME_5.value,
+            "model": "Sesame 5",
+        }
+        mock_entry_lock.title = "Front Door"
+
+        mock_entry_touch = MagicMock()
+        mock_entry_touch.data = {
+            "address": "AA:BB:CC:DD:EE:FF",
+            "model_id": ProductModel.SESAME_TOUCH_2.value,
+            "model": "Sesame Touch 2",
+        }
+        mock_entry_touch.title = "Keypad"
+
+        self.hass.config_entries.async_entries.return_value = [mock_entry_lock, mock_entry_touch]
+
+        locks = _get_configured_locks(self.hass, exclude_address="AA:BB:CC:DD:EE:FF")
+        self.assertEqual(len(locks), 2)  # auto + Front Door
+        self.assertEqual(locks[0]["value"], "auto")
+        self.assertEqual(locks[1]["value"], "11:22:33:44:55:66")
+        self.assertIn("Front Door", locks[1]["label"])
 
 
 if __name__ == "__main__":

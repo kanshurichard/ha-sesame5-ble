@@ -18,10 +18,11 @@
       },
       "auth": {
         "title": "Authenticate with {device_name}",
-        "description": "Enter the Secret Key from your Sesame app.\n\n[Real-time Persistent Connection (Recommended)]: Keeps BLE connected for instant status updates, unlock automations, and one-time passcode auto-deletion.\n[Power-Saving Mode Limitations]: Connects only on-demand or periodically. Real-time manual unlock detection and instant one-time passcode deletion will be delayed or unavailable.",
+        "description": "Enter the Secret Key from your Sesame app.\n\n[Locks - Real-time Persistent Connection (Recommended)]: Keeps BLE connected for instant status updates, unlock automations, and one-time passcode auto-deletion.\n[Keypads]: Uses power-saving on-demand connection and links to a Sesame lock for one-time passcode deletion.\n[Power-Saving Mode Limitations]: Connects only on-demand or periodically. Real-time manual unlock detection and instant one-time passcode deletion will be delayed or unavailable.",
         "data": {
           "secret_key": "Secret Key / QR Code URL",
           "connection_mode": "Connection Mode",
+          "linked_lock": "Linked Sesame Lock (for one-time passcode auto-deletion)",
           "history_tag": "History Tag (Name shown in App log)",
           "read_only": "Read-only mode (Monitor state and battery only; disable remote operations)"
         }
@@ -41,10 +42,11 @@
     "step": {
       "init": {
         "title": "Sesame 5 BLE Options",
-        "description": "[Real-time Mode]: Maintains persistent BLE connection for instant state feedback, automations, and one-time passcode auto-deletion.\n[Power-Saving Mode Limitations]: Disconnects after idle. Real-time physical unlock events cannot be pushed to HA until the next connection.\n[Read-Only Mode]: Prevents remote unlock, lock, or passcode modifications.",
+        "description": "[Locks]: Choose between Real-time persistent connection (recommended for automations) or power-saving mode.\n[Keypads]: Connects on-demand to save battery; configure linked lock for one-time passcode auto-deletion.\n[Read-Only Mode]: Prevents remote unlock, lock, or passcode modifications.",
         "data": {
-          "connection_mode": "Connection Mode",
-          "refresh_interval": "Periodic refresh interval in minutes (Power-Saving Mode only; 0 = on-demand)",
+          "connection_mode": "Connection Mode (Locks)",
+          "linked_lock": "Linked Sesame Lock (Keypads)",
+          "refresh_interval": "Periodic refresh interval in minutes (Locks Power-Saving Mode only; 0 = on-demand)",
           "history_tag": "History Tag (Name shown in App unlock history)",
           "read_only": "Read-only mode (Disables remote lock/unlock/passcode edit)"
         }

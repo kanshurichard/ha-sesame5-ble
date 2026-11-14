@@ -16,10 +16,12 @@ CONF_REFRESH_INTERVAL = "refresh_interval"
 CONF_HISTORY_TAG = "history_tag"
 CONF_READ_ONLY = "read_only"
 CONF_CONNECTION_MODE = "connection_mode"
+CONF_LINKED_LOCK = "linked_lock"
 
 DEFAULT_REFRESH_INTERVAL = 0  # 0 = on-demand only (saves battery)
 DEFAULT_HISTORY_TAG = "HA"
 DEFAULT_READ_ONLY = False
+DEFAULT_LINKED_LOCK = "auto"
 
 # Connection modes
 CONNECTION_MODE_REALTIME = "realtime"
