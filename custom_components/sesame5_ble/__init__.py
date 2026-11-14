@@ -138,7 +138,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: Sesame5ConfigEntry) -> b
     coordinator.start_periodic_refresh()
 
     async def _update_options(hass: HomeAssistant, updated_entry: ConfigEntry) -> None:
-        coordinator.restart_periodic_refresh()
+        coordinator.apply_options_update()
 
     entry.async_on_unload(entry.add_update_listener(_update_options))
     entry.runtime_data = coordinator

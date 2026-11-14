@@ -17,12 +17,17 @@ from homeassistant.helpers.event import async_call_later
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
 from .const import (
+    CONF_CONNECTION_MODE,
     CONF_HISTORY_TAG,
     CONF_READ_ONLY,
     CONF_REFRESH_INTERVAL,
+    CONNECTION_MODE_POWER_SAVING,
+    CONNECTION_MODE_REALTIME,
+    DEFAULT_CONNECTION_MODE,
     DEFAULT_HISTORY_TAG,
     DEFAULT_READ_ONLY,
     DEFAULT_REFRESH_INTERVAL,
+    POWER_SAVING_IDLE_TIMEOUT,
     SIGNAL_SESAME_HISTORY_UPDATE,
 )
 from .device import Sesame5Device
@@ -62,6 +67,9 @@ class Sesame5Coordinator(DataUpdateCoordinator[Sesame5State]):
         self._connection_lock = asyncio.Lock()
         self._temp_passcodes: dict[str, dict[str, Any]] = {}
         self._unsub_dispatcher: Callable[[], None] | None = None
+        self._is_shutting_down = False
+        self._reconnect_task: asyncio.Task[None] | None = None
+        self._idle_disconnect_unsub: Callable[[], None] | None = None
 
         super().__init__(
             hass,
@@ -89,6 +97,21 @@ class Sesame5Coordinator(DataUpdateCoordinator[Sesame5State]):
     @property
     def device(self) -> Sesame5Device:
         return self._device
+
+    @property
+    def connection_mode(self) -> str:
+        """Return 'realtime' or 'power_saving'."""
+        if self.config_entry:
+            return self.config_entry.options.get(
+                CONF_CONNECTION_MODE,
+                self.config_entry.data.get(CONF_CONNECTION_MODE, DEFAULT_CONNECTION_MODE),
+            )
+        return DEFAULT_CONNECTION_MODE
+
+    @property
+    def is_realtime_mode(self) -> bool:
+        """Return True if persistent BLE long connection is enabled."""
+        return self.connection_mode == CONNECTION_MODE_REALTIME
 
     @property
     def history_tag(self) -> str:
@@ -124,16 +147,69 @@ class Sesame5Coordinator(DataUpdateCoordinator[Sesame5State]):
             await self._ensure_connected()
         except Exception as err:
             raise UpdateFailed(f"Unable to refresh Sesame 5 state: {err}") from err
+        finally:
+            self._schedule_power_saving_disconnect()
         return self._current_state
 
     def _on_device_update(self) -> None:
-        """Callback from device when notification is processed."""
+        """Callback from device when notification is processed or transport disconnects."""
         self.async_set_updated_data(self._current_state)
         if self._device.history:
             try:
                 async_dispatcher_send(self.hass, SIGNAL_SESAME_HISTORY_UPDATE, self._device.history)
             except Exception:
                 pass
+
+        # In realtime mode, auto-reconnect if connection drops
+        if self.is_realtime_mode and not self._device.is_connected and not self._is_shutting_down:
+            self._trigger_reconnect()
+
+    def _trigger_reconnect(self) -> None:
+        """Schedule reconnection loop for persistent connection."""
+        if self._is_shutting_down or not self.is_realtime_mode:
+            return
+        if self._reconnect_task and not self._reconnect_task.done():
+            return
+        if hasattr(self.hass, "async_create_task"):
+            self._reconnect_task = self.hass.async_create_task(self._async_reconnect_loop())
+
+    async def _async_reconnect_loop(self) -> None:
+        """Keep-alive reconnect loop with exponential backoff for persistent connection."""
+        delay = 3
+        while not self._is_shutting_down and self.is_realtime_mode:
+            if self._device.is_ready:
+                break
+            try:
+                LOGGER.debug("[%s] Reconnecting persistent BLE connection...", self.address)
+                async with self._connection_lock:
+                    if not self._device.is_ready:
+                        await self._device.authenticate()
+                LOGGER.info("[%s] Persistent BLE connection re-established", self.address)
+                break
+            except Exception as err:
+                LOGGER.debug("[%s] Persistent reconnect attempt failed: %s (retrying in %ds)", self.address, err, delay)
+                await asyncio.sleep(delay)
+                delay = min(delay * 2, 60)
+
+    def _schedule_power_saving_disconnect(self, delay: float = POWER_SAVING_IDLE_TIMEOUT) -> None:
+        """In power-saving mode, disconnect after a short idle timeout."""
+        if self.is_realtime_mode or self._is_shutting_down:
+            return
+        if self._idle_disconnect_unsub:
+            self._idle_disconnect_unsub()
+            self._idle_disconnect_unsub = None
+
+        def _do_disconnect(now: Any) -> None:
+            self._idle_disconnect_unsub = None
+            if not self.is_realtime_mode and self._device.is_connected:
+                LOGGER.debug("[%s] Power saving mode: disconnecting after %ds idle timeout", self.address, delay)
+                if hasattr(self.hass, "async_create_task"):
+                    self.hass.async_create_task(self._device.disconnect())
+
+        try:
+            self._idle_disconnect_unsub = async_call_later(self.hass, delay, _do_disconnect)
+        except Exception:
+            pass
 
     def _on_history_broadcast(self, history: Sesame5HistoryRecord) -> None:
         """Handle history record broadcast from any lock in HA to detect password unlock."""
@@ -165,33 +241,46 @@ class Sesame5Coordinator(DataUpdateCoordinator[Sesame5State]):
 
     async def _ensure_connected(self) -> None:
         """Ensure active and authenticated BLE connection to lock."""
+        if self._idle_disconnect_unsub:
+            self._idle_disconnect_unsub()
+            self._idle_disconnect_unsub = None
+
         async with self._connection_lock:
             if self._device.is_ready:
                 return
 
-            LOGGER.debug("[%s] Coordinator establishing on-demand connection", self.address)
+            LOGGER.debug("[%s] Coordinator establishing connection", self.address)
             await self._device.authenticate()
 
     async def lock(self, tag: str | None = None) -> None:
         """Lock the door."""
         if self.read_only:
             raise HomeAssistantError("Sesame 5 当前处于只读模式，已禁止远程施锁操作。如需操作，请在集成选项中关闭只读模式。")
-        await self._ensure_connected()
-        await self._device.lock(tag or self.history_tag)
+        try:
+            await self._ensure_connected()
+            await self._device.lock(tag or self.history_tag)
+        finally:
+            self._schedule_power_saving_disconnect()
 
     async def unlock(self, tag: str | None = None) -> None:
         """Unlock the door."""
         if self.read_only:
             raise HomeAssistantError("Sesame 5 当前处于只读模式，已禁止远程解锁操作。如需操作，请在集成选项中关闭只读模式。")
-        await self._ensure_connected()
-        await self._device.unlock(tag or self.history_tag)
+        try:
+            await self._ensure_connected()
+            await self._device.unlock(tag or self.history_tag)
+        finally:
+            self._schedule_power_saving_disconnect()
 
     async def toggle(self, tag: str | None = None) -> None:
         """Toggle lock state."""
         if self.read_only:
             raise HomeAssistantError("Sesame 5 当前处于只读模式，已禁止远程操作。如需操作，请在集成选项中关闭只读模式。")
-        await self._ensure_connected()
-        await self._device.toggle(tag or self.history_tag)
+        try:
+            await self._ensure_connected()
+            await self._device.toggle(tag or self.history_tag)
+        finally:
+            self._schedule_power_saving_disconnect()
 
     async def async_add_passcode(
         self,
@@ -204,8 +293,11 @@ class Sesame5Coordinator(DataUpdateCoordinator[Sesame5State]):
         if self.read_only:
             raise HomeAssistantError("Sesame 当前处于只读模式，已禁止修改键盘密码。如需操作，请在集成选项中关闭只读模式。")
 
-        await self._ensure_connected()
-        await self._device.add_passcode(passcode, name)
+        try:
+            await self._ensure_connected()
+            await self._device.add_passcode(passcode, name)
+        finally:
+            self._schedule_power_saving_disconnect()
 
         # Cancel any previous timer for this passcode
         if passcode in self._temp_passcodes:
@@ -251,17 +343,24 @@ class Sesame5Coordinator(DataUpdateCoordinator[Sesame5State]):
             if callable(unsub):
                 unsub()
 
-        await self._ensure_connected()
-        await self._device.delete_passcode(passcode)
+        try:
+            await self._ensure_connected()
+            await self._device.delete_passcode(passcode)
+        finally:
+            self._schedule_power_saving_disconnect()
 
     async def async_get_passcodes(self) -> list[dict[str, Any]]:
         """Return list of passcodes registered on the device."""
-        await self._ensure_connected()
-        return await self._device.request_passcodes()
+        try:
+            await self._ensure_connected()
+            return await self._device.request_passcodes()
+        finally:
+            self._schedule_power_saving_disconnect()
 
     def start_periodic_refresh(self) -> None:
-        """Configure periodic status polling if enabled by user."""
-        if not self.config_entry:
+        """Configure periodic status polling if in power-saving mode."""
+        if not self.config_entry or self.is_realtime_mode:
+            self.update_interval = None
             return
 
         interval_minutes = self.config_entry.options.get(
@@ -271,17 +370,47 @@ class Sesame5Coordinator(DataUpdateCoordinator[Sesame5State]):
 
         if interval_minutes and interval_minutes > 0:
             self.update_interval = timedelta(minutes=interval_minutes)
-            LOGGER.info("[%s] Periodic refresh set to every %d minutes", self.address, interval_minutes)
+            LOGGER.info("[%s] Periodic refresh set to every %d minutes (Power-Saving Mode)", self.address, interval_minutes)
         else:
             self.update_interval = None
-            LOGGER.info("[%s] Periodic refresh disabled (on-demand connection only)", self.address)
+            LOGGER.info("[%s] Periodic refresh disabled (On-demand only)", self.address)
 
     def restart_periodic_refresh(self) -> None:
         """Restart periodic timer after option change."""
         self.start_periodic_refresh()
 
+    def apply_options_update(self) -> None:
+        """Apply updated connection mode and options from options flow."""
+        LOGGER.info(
+            "[%s] Applying updated options: mode=%s, read_only=%s",
+            self.address,
+            self.connection_mode,
+            self.read_only,
+        )
+        if self.is_realtime_mode:
+            if self._idle_disconnect_unsub:
+                self._idle_disconnect_unsub()
+                self._idle_disconnect_unsub = None
+            self.update_interval = None
+            if not self._device.is_ready:
+                self._trigger_reconnect()
+        else:
+            if self._reconnect_task and not self._reconnect_task.done():
+                self._reconnect_task.cancel()
+            self.start_periodic_refresh()
+            self._schedule_power_saving_disconnect(delay=3)
+
     async def shutdown(self) -> None:
         """Disconnect BLE device cleanly and cancel timers."""
+        self._is_shutting_down = True
+
+        if self._reconnect_task and not self._reconnect_task.done():
+            self._reconnect_task.cancel()
+
+        if self._idle_disconnect_unsub:
+            self._idle_disconnect_unsub()
+            self._idle_disconnect_unsub = None
+
         if self._unsub_dispatcher:
             self._unsub_dispatcher()
             self._unsub_dispatcher = None

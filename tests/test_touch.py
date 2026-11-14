@@ -194,6 +194,26 @@ class TestCoordinatorPasscodes(unittest.IsolatedAsyncioTestCase):
             await asyncio.gather(*task_created)
         self.assertTrue(len(task_created) > 0)
 
+    async def test_connection_modes(self):
+        """Test default realtime mode vs power saving mode."""
+        # Default is realtime
+        self.assertTrue(self.coordinator.is_realtime_mode)
+        self.assertEqual(self.coordinator.connection_mode, "realtime")
+
+        # Switch to power saving
+        self.entry.options = {"connection_mode": "power_saving", "refresh_interval": 15}
+        self.assertFalse(self.coordinator.is_realtime_mode)
+        self.assertEqual(self.coordinator.connection_mode, "power_saving")
+
+        self.coordinator.apply_options_update()
+        self.assertIsNotNone(self.coordinator.update_interval)
+
+        # Switch back to realtime
+        self.entry.options = {"connection_mode": "realtime"}
+        self.coordinator.apply_options_update()
+        self.assertIsNone(self.coordinator.update_interval)
+        self.assertTrue(self.coordinator.is_realtime_mode)
+
 
 if __name__ == "__main__":
     unittest.main()

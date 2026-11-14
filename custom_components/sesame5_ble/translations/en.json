@@ -18,32 +18,35 @@
       },
       "auth": {
         "title": "Authenticate with {device_name}",
-        "description": "Enter the Secret Key from your Sesame app. You can paste either:\n1. The full QR code URL (`ssm://UI?t=sk&sk=...`)\n2. The base64 key string scanned from the QR code\n3. The 32-character hex secret key",
+        "description": "Enter the Secret Key from your Sesame app.\n\n[Real-time Persistent Connection (Recommended)]: Keeps BLE connected for instant status updates, unlock automations, and one-time passcode auto-deletion.\n[Power-Saving Mode Limitations]: Connects only on-demand or periodically. Real-time manual unlock detection and instant one-time passcode deletion will be delayed or unavailable.",
         "data": {
           "secret_key": "Secret Key / QR Code URL",
+          "connection_mode": "Connection Mode",
           "history_tag": "History Tag (Name shown in App log)",
-          "read_only": "Read-only mode (Monitor state and battery only; disable remote lock/unlock)"
+          "read_only": "Read-only mode (Monitor state and battery only; disable remote operations)"
         }
       }
     },
     "error": {
-      "cannot_connect": "Failed to connect to Sesame 5 via Bluetooth. Please ensure the lock is within range.",
-      "invalid_auth": "Authentication failed. Please verify that your Secret Key or QR Code matches this lock.",
+      "cannot_connect": "Failed to connect to Sesame device via Bluetooth. Please ensure the device is within range.",
+      "invalid_auth": "Authentication failed. Please verify that your Secret Key or QR Code matches this device.",
       "invalid_key_format": "Unrecognized key format. Please provide a valid Sesame QR code URL or 16-byte key.",
       "device_not_found": "Selected device was not found."
     },
     "abort": {
-      "already_configured": "This Sesame lock is already configured."
+      "already_configured": "This Sesame device is already configured."
     }
   },
   "options": {
     "step": {
       "init": {
         "title": "Sesame 5 BLE Options",
+        "description": "[Real-time Mode]: Maintains persistent BLE connection for instant state feedback, automations, and one-time passcode auto-deletion.\n[Power-Saving Mode Limitations]: Disconnects after idle. Real-time physical unlock events cannot be pushed to HA until the next connection.\n[Read-Only Mode]: Prevents remote unlock, lock, or passcode modifications.",
         "data": {
-          "refresh_interval": "Periodic refresh interval in minutes (0 = On-demand only, recommended for battery life)",
+          "connection_mode": "Connection Mode",
+          "refresh_interval": "Periodic refresh interval in minutes (Power-Saving Mode only; 0 = on-demand)",
           "history_tag": "History Tag (Name shown in App unlock history)",
-          "read_only": "Read-only mode (Disables remote lock/unlock)"
+          "read_only": "Read-only mode (Disables remote lock/unlock/passcode edit)"
         }
       }
     }

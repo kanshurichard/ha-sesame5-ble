@@ -23,6 +23,7 @@ from homeassistant.helpers.selector import (
 
 from .const import (
     COMPANY_ID,
+    CONF_CONNECTION_MODE,
     CONF_DEVICE_ID,
     CONF_HISTORY_TAG,
     CONF_MODEL,
@@ -30,6 +31,9 @@ from .const import (
     CONF_READ_ONLY,
     CONF_REFRESH_INTERVAL,
     CONF_SECRET_KEY,
+    CONNECTION_MODE_POWER_SAVING,
+    CONNECTION_MODE_REALTIME,
+    DEFAULT_CONNECTION_MODE,
     DEFAULT_HISTORY_TAG,
     DEFAULT_READ_ONLY,
     DEFAULT_REFRESH_INTERVAL,
@@ -226,12 +230,33 @@ class Sesame5ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                             CONF_MODEL_ID: self._selected_model_id,
                             CONF_HISTORY_TAG: history_tag,
                             CONF_READ_ONLY: user_input.get(CONF_READ_ONLY, DEFAULT_READ_ONLY),
+                            CONF_CONNECTION_MODE: user_input.get(CONF_CONNECTION_MODE, DEFAULT_CONNECTION_MODE),
                         },
                     )
+
+        mode_options = [
+            {
+                "value": CONNECTION_MODE_REALTIME,
+                "label": "实时长连接模式（保持蓝牙常连，秒级响应状态变化，支持开锁自动化与单次密码即时失效，推荐）",
+            },
+            {
+                "value": CONNECTION_MODE_POWER_SAVING,
+                "label": "省电模式（按需/定期连线，无法实时感知开关锁，开锁自动化与单次密码即时失效将受限）",
+            },
+        ]
 
         schema = vol.Schema(
             {
                 vol.Required(CONF_SECRET_KEY): str,
+                vol.Required(
+                    CONF_CONNECTION_MODE,
+                    default=DEFAULT_CONNECTION_MODE,
+                ): SelectSelector(
+                    SelectSelectorConfig(
+                        options=mode_options,
+                        mode=SelectSelectorMode.DROPDOWN,
+                    )
+                ),
                 vol.Optional(CONF_HISTORY_TAG, default=DEFAULT_HISTORY_TAG): str,
                 vol.Optional(CONF_READ_ONLY, default=DEFAULT_READ_ONLY): bool,
             }
@@ -262,6 +287,10 @@ class Sesame5OptionsFlowHandler(config_entries.OptionsFlow):
         if user_input is not None:
             return self.async_create_entry(title="", data=user_input)
 
+        current_mode = self.config_entry.options.get(
+            CONF_CONNECTION_MODE,
+            self.config_entry.data.get(CONF_CONNECTION_MODE, DEFAULT_CONNECTION_MODE),
+        )
         current_interval = self.config_entry.options.get(
             CONF_REFRESH_INTERVAL,
             self.config_entry.data.get(CONF_REFRESH_INTERVAL, DEFAULT_REFRESH_INTERVAL),
@@ -275,8 +304,28 @@ class Sesame5OptionsFlowHandler(config_entries.OptionsFlow):
             self.config_entry.data.get(CONF_READ_ONLY, DEFAULT_READ_ONLY),
         )
 
+        mode_options = [
+            {
+                "value": CONNECTION_MODE_REALTIME,
+                "label": "实时长连接模式（保持蓝牙常连，秒级响应状态变化，支持开锁自动化与单次密码即时失效，推荐）",
+            },
+            {
+                "value": CONNECTION_MODE_POWER_SAVING,
+                "label": "省电模式（按需/定期连线，无法实时感知开关锁，开锁自动化与单次密码即时失效将受限）",
+            },
+        ]
+
         schema = vol.Schema(
             {
+                vol.Required(
+                    CONF_CONNECTION_MODE,
+                    default=current_mode,
+                ): SelectSelector(
+                    SelectSelectorConfig(
+                        options=mode_options,
+                        mode=SelectSelectorMode.DROPDOWN,
+                    )
+                ),
                 vol.Optional(CONF_REFRESH_INTERVAL, default=current_interval): vol.All(
                     vol.Coerce(int), vol.Range(min=0, max=1440)
                 ),

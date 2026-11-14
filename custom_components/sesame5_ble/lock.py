@@ -96,6 +96,7 @@ class Sesame5BleLock(CoordinatorEntity[Sesame5Coordinator], LockEntity):
     def extra_state_attributes(self) -> dict[str, Any]:
         """Return entity specific state attributes."""
         attrs: dict[str, Any] = {
+            "connection_mode": self.coordinator.connection_mode,
             "read_only_mode": self.coordinator.read_only,
         }
         data = self.coordinator.data

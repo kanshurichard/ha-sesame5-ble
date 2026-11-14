@@ -15,10 +15,17 @@ CONF_MODEL_ID = "model_id"
 CONF_REFRESH_INTERVAL = "refresh_interval"
 CONF_HISTORY_TAG = "history_tag"
 CONF_READ_ONLY = "read_only"
+CONF_CONNECTION_MODE = "connection_mode"
 
 DEFAULT_REFRESH_INTERVAL = 0  # 0 = on-demand only (saves battery)
 DEFAULT_HISTORY_TAG = "HA"
 DEFAULT_READ_ONLY = False
+
+# Connection modes
+CONNECTION_MODE_REALTIME = "realtime"
+CONNECTION_MODE_POWER_SAVING = "power_saving"
+DEFAULT_CONNECTION_MODE = CONNECTION_MODE_REALTIME
+POWER_SAVING_IDLE_TIMEOUT = 10  # Seconds before disconnect in power-saving mode
 
 # BLE GATT Service & Characteristics (Sesame standard)
 SERVICE_UUID = "0000fd81-0000-1000-8000-00805f9b34fb"
