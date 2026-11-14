@@ -64,6 +64,15 @@
       },
       "last_operation_time": {
         "name": "最后操作时间"
+      },
+      "password_count": {
+        "name": "已存密码数"
+      },
+      "fingerprint_count": {
+        "name": "已存指纹数"
+      },
+      "card_count": {
+        "name": "已存卡片数"
       }
     },
     "binary_sensor": {

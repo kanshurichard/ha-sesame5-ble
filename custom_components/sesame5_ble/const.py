@@ -76,6 +76,20 @@ LOCK_MODELS = {
     ProductModel.SESAME_6_PRO.value,
 }
 
+TOUCH_MODELS = {
+    ProductModel.SESAME_TOUCH_1_PRO.value,
+    ProductModel.SESAME_TOUCH_1.value,
+    ProductModel.SESAME_TOUCH_2.value,
+    ProductModel.SESAME_TOUCH_2_PRO.value,
+    ProductModel.SESAME_FACE_1_PRO.value,
+    ProductModel.SESAME_FACE_1.value,
+}
+
+BOT_MODELS = {
+    ProductModel.SESAME_BOT_2.value,
+    ProductModel.SESAME_BOT_3.value,
+}
+
 
 class PacketType(IntFlag):
     """1-byte packet header bits for BLE communication."""
@@ -108,6 +122,38 @@ class ItemCode(Enum):
     STOP = 86
     TOGGLE = 88
     CLICK = 89
+
+    # Biometric & Keypad item codes (Sesame Touch / Touch 2 / Keypad / Face)
+    CARD_CHANGE = 107
+    CARD_DELETE = 108
+    CARD_GET = 109
+    CARD_NOTIFY = 110
+    CARD_LAST = 111
+    CARD_FIRST = 112
+    CARD_MODE_GET = 113
+    CARD_MODE_SET = 114
+
+    FINGERPRINT_CHANGE = 115
+    FINGERPRINT_DELETE = 116
+    FINGERPRINT_GET = 117
+    FINGERPRINT_NOTIFY = 118
+    FINGERPRINT_LAST = 119
+    FINGERPRINT_FIRST = 120
+    FINGERPRINT_MODE_GET = 121
+    FINGERPRINT_MODE_SET = 122
+
+    SSM_OS3_PASSCODE_CHANGE = 123
+    SSM_OS3_PASSCODE_DELETE = 124
+    SSM_OS3_PASSCODE_GET = 125
+    SSM_OS3_PASSCODE_NOTIFY = 126
+    SSM_OS3_PASSCODE_LAST = 127
+    SSM_OS3_PASSCODE_FIRST = 128
+    SSM_OS3_PASSCODE_MODE_GET = 129
+    SSM_OS3_PASSCODE_MODE_SET = 130
+    SSM_OS3_PASSCODE_ADD = 138
+    SSM_OS3_PASSCODE_MOVE = 142
+    CARD_ADD = 140
+    CARD_MOVE = 141
 
 
 class OpCode(Enum):
@@ -242,3 +288,17 @@ CONNECT_TIMEOUT = 10
 INITIAL_TOKEN_TIMEOUT = 5
 LOGIN_TIMEOUT = 8
 COMMAND_TIMEOUT = 5
+
+# Services
+SERVICE_ADD_PASSCODE = "add_passcode"
+SERVICE_DELETE_PASSCODE = "delete_passcode"
+SERVICE_GET_PASSCODES = "get_passcodes"
+
+# Service Attributes
+ATTR_PASSCODE = "passcode"
+ATTR_NAME = "name"
+ATTR_DURATION = "duration"
+ATTR_ONE_TIME = "one_time"
+
+# Internal Dispatcher Signals
+SIGNAL_SESAME_HISTORY_UPDATE = "sesame5_ble_history_update"

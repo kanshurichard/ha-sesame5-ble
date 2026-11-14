@@ -64,6 +64,15 @@
       },
       "last_operation_time": {
         "name": "最終操作時刻"
+      },
+      "password_count": {
+        "name": "登録暗証番号数"
+      },
+      "fingerprint_count": {
+        "name": "登録指紋数"
+      },
+      "card_count": {
+        "name": "登録カード数"
       }
     },
     "binary_sensor": {

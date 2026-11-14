@@ -18,7 +18,11 @@ for mod in [
     "homeassistant.helpers.entity_platform",
     "homeassistant.helpers.update_coordinator",
     "homeassistant.helpers.device_registry",
+    "homeassistant.helpers.dispatcher",
+    "homeassistant.helpers.event",
+    "homeassistant.helpers.config_validation",
     "homeassistant.helpers.selector",
+    "voluptuous",
     "bleak",
     "bleak.backends",
     "bleak.backends.device",
@@ -34,3 +38,22 @@ for mod in [
 ]:
     if mod not in sys.modules:
         sys.modules[mod] = MagicMock()
+
+
+class MockDataUpdateCoordinator:
+    def __init__(self, hass, logger, name, config_entry, update_interval=None):
+        self.hass = hass
+        self.logger = logger
+        self.name = name
+        self.config_entry = config_entry
+        self.update_interval = update_interval
+        self.data = None
+
+    def __class_getitem__(cls, item):
+        return cls
+
+    def async_set_updated_data(self, data):
+        self.data = data
+
+
+sys.modules["homeassistant.helpers.update_coordinator"].DataUpdateCoordinator = MockDataUpdateCoordinator

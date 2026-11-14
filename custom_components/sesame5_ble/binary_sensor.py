@@ -13,6 +13,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
+from .const import CONF_MODEL_ID, TOUCH_MODELS
 from .coordinator import Sesame5Coordinator
 from .helpers import get_device_info
 
@@ -30,12 +31,17 @@ async def async_setup_entry(
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     coordinator = entry.runtime_data
-    async_add_entities(
-        [
-            Sesame5BatteryCriticalBinarySensor(coordinator, entry),
-            Sesame5MovingBinarySensor(coordinator, entry),
-        ]
-    )
+    model_id = entry.data.get(CONF_MODEL_ID)
+    is_keypad = coordinator.device.is_keypad or (model_id is not None and model_id in TOUCH_MODELS)
+
+    entities: list[BinarySensorEntity] = [
+        Sesame5BatteryCriticalBinarySensor(coordinator, entry),
+    ]
+
+    if not is_keypad:
+        entities.append(Sesame5MovingBinarySensor(coordinator, entry))
+
+    async_add_entities(entities)
 
 
 class Sesame5BatteryCriticalBinarySensor(CoordinatorEntity[Sesame5Coordinator], BinarySensorEntity):

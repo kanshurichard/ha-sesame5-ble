@@ -64,6 +64,15 @@
       },
       "last_operation_time": {
         "name": "Last Operation Time"
+      },
+      "password_count": {
+        "name": "Password Count"
+      },
+      "fingerprint_count": {
+        "name": "Fingerprint Count"
+      },
+      "card_count": {
+        "name": "Card Count"
       }
     },
     "binary_sensor": {

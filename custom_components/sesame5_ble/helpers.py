@@ -119,17 +119,39 @@ def parse_secret_key_input(input_str: str) -> tuple[bytes, str | None, int | Non
 
 
 class Sesame5MechStatus:
-    """Parsed mechanical status of a Sesame 5 / SesameOS 3 lock."""
+    """Parsed mechanical status of a Sesame 5 / SesameOS 3 lock or Sesame Touch."""
 
     def __init__(self, payload: bytes) -> None:
-        if len(payload) < 7:
-            raise ValueError(f"MechStatus payload too short: {len(payload)} bytes, expected 7")
+        self.raw = payload
+        self.card_count: int | None = None
+        self.fingerprint_count: int | None = None
+        self.password_count: int | None = None
 
-        raw_battery, target, position, status_flags = struct.unpack("<HhhB", payload[:7])
-        self._raw_battery = raw_battery
-        self._target = target
-        self._position = position
-        self._flags = status_flags
+        if len(payload) >= 9:
+            # Sesame Touch / Touch Pro / Face MechStatus: <HhhhB (9 bytes)
+            (
+                raw_battery,
+                card_count,
+                fp_count,
+                pwd_count,
+                status_flags,
+            ) = struct.unpack("<HhhhB", payload[:9])
+            self.card_count = card_count
+            self.fingerprint_count = fp_count
+            self.password_count = pwd_count
+            self._target = 0
+            self._position = 0
+            self._raw_battery = raw_battery
+            self._flags = status_flags
+        elif len(payload) >= 7:
+            # Sesame 5 / 5 Pro MechStatus: <HhhB (7 bytes)
+            raw_battery, target, position, status_flags = struct.unpack("<HhhB", payload[:7])
+            self._target = target
+            self._position = position
+            self._raw_battery = raw_battery
+            self._flags = status_flags
+        else:
+            raise ValueError(f"MechStatus payload too short: {len(payload)} bytes, expected at least 7")
 
         self._battery_voltage = raw_battery * 2 / 1000.0
         self._battery_pct = calculate_battery_percentage(self._battery_voltage)
@@ -171,7 +193,9 @@ class Sesame5MechStatus:
         return bool(self._flags & MechStatusBitFlag.IS_CLUTCH_FAILED)
 
     def is_locked(self) -> bool | None:
-        """Return True if locked, False if unlocked, None if undetermined/moving."""
+        """Return True if locked, False if unlocked, None if undetermined/moving or not a lock."""
+        if self.card_count is not None:
+            return None
         if self.is_in_lock_range:
             return True
         if self.is_in_unlock_range:
@@ -473,3 +497,88 @@ def get_device_info(coordinator: Sesame5Coordinator, entry: ConfigEntry) -> Any:
         model=model_name,
         serial_number=device_id,
     )
+
+
+def format_passcode_add_payload(passcode: str, name: str = "HA") -> bytes:
+    """Format SSM_OS3_PASSCODE_ADD payload (36 bytes).
+
+    Layout:
+    [0xF0, 0x00, id_len] + id_bytes (16B padded) + [name_len] + name_bytes (16B padded)
+    """
+    clean_code = str(passcode).strip()
+    if not clean_code.isdigit():
+        raise ValueError(f"Passcode must contain only digits: {passcode}")
+    if not (4 <= len(clean_code) <= 16):
+        raise ValueError(f"Passcode length must be between 4 and 16 digits, got {len(clean_code)}")
+
+    # Convert each digit character to single integer byte 0..9
+    id_bytes = bytes([int(c) for c in clean_code])
+    name_bytes = name.encode("utf-8")[:16]
+
+    header = bytes([0xF0, 0x00, len(id_bytes)])
+    id_padded = id_bytes.ljust(16, b"\x00")
+    name_len = bytes([len(name_bytes)])
+    name_padded = name_bytes.ljust(16, b"\x00")
+
+    return header + id_padded + name_len + name_padded
+
+
+def format_passcode_delete_payload(passcode: str) -> bytes:
+    """Format SSM_OS3_PASSCODE_DELETE payload.
+
+    Accepts PIN digits string (e.g. '1234') or hex string of PIN bytes (e.g. '01020304').
+    """
+    clean = str(passcode).strip()
+    # Check if it is a formatted hex ID where each 2 hex chars represents a digit (e.g. '01020304')
+    if len(clean) >= 8 and len(clean) % 2 == 0 and all(clean[i] == "0" for i in range(0, len(clean), 2)):
+        return bytes.fromhex(clean)
+    if clean.isdigit():
+        return bytes([int(c) for c in clean])
+    try:
+        return bytes.fromhex(clean)
+    except ValueError:
+        raise ValueError(f"Invalid passcode format: {passcode}")
+
+
+def parse_passcode_records(payload: bytes) -> list[dict[str, Any]]:
+    """Parse SSM_OS3_PASSCODE_NOTIFY records.
+
+    Record layout:
+    [cardType(1B), idLen(1B), id(idLen B), nameLen(1B), name(nameLen B)]
+    """
+    records: list[dict[str, Any]] = []
+    rest = payload
+    while len(rest) >= 4:
+        try:
+            card_type = rest[0]
+            id_len = rest[1]
+            if len(rest) < 2 + id_len + 1:
+                break
+            id_bytes = rest[2 : 2 + id_len]
+            name_len = rest[2 + id_len]
+            if len(rest) < 2 + id_len + 1 + name_len:
+                break
+            name_bytes = rest[3 + id_len : 3 + id_len + name_len]
+
+            # Format PIN string from digit bytes if all bytes <= 9
+            if all(b <= 9 for b in id_bytes):
+                pin_str = "".join(str(b) for b in id_bytes)
+            else:
+                pin_str = id_bytes.hex()
+            name_str = name_bytes.decode("utf-8", errors="ignore").strip()
+
+            records.append(
+                {
+                    "type": card_type,
+                    "passcode": pin_str,
+                    "passcode_id": id_bytes.hex(),
+                    "name": name_str,
+                }
+            )
+            record_size = 1 + 1 + id_len + 1 + name_len
+            if record_size <= 0:
+                break
+            rest = rest[record_size:]
+        except Exception:
+            break
+    return records

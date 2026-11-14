@@ -15,6 +15,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
+from .const import CONF_MODEL_ID, LOCK_MODELS, TOUCH_MODELS
 from .coordinator import Sesame5Coordinator
 from .helpers import get_device_info
 
@@ -32,15 +33,32 @@ async def async_setup_entry(
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     coordinator = entry.runtime_data
-    async_add_entities(
-        [
-            Sesame5BatterySensor(coordinator, entry),
-            Sesame5VoltageSensor(coordinator, entry),
-            Sesame5PositionSensor(coordinator, entry),
-            Sesame5LastOperationSensor(coordinator, entry),
-            Sesame5LastOperationTimeSensor(coordinator, entry),
-        ]
-    )
+    model_id = entry.data.get(CONF_MODEL_ID)
+    is_keypad = coordinator.device.is_keypad or (model_id is not None and model_id in TOUCH_MODELS)
+
+    entities: list[SensorEntity] = [
+        Sesame5BatterySensor(coordinator, entry),
+        Sesame5VoltageSensor(coordinator, entry),
+    ]
+
+    if not is_keypad:
+        entities.extend(
+            [
+                Sesame5PositionSensor(coordinator, entry),
+                Sesame5LastOperationSensor(coordinator, entry),
+                Sesame5LastOperationTimeSensor(coordinator, entry),
+            ]
+        )
+    else:
+        entities.extend(
+            [
+                SesameTouchPasswordCountSensor(coordinator, entry),
+                SesameTouchFingerprintCountSensor(coordinator, entry),
+                SesameTouchCardCountSensor(coordinator, entry),
+            ]
+        )
+
+    async_add_entities(entities)
 
 
 class Sesame5BatterySensor(CoordinatorEntity[Sesame5Coordinator], SensorEntity):
@@ -164,3 +182,69 @@ class Sesame5LastOperationTimeSensor(CoordinatorEntity[Sesame5Coordinator], Sens
         if not data or not data.history or data.history.timestamp <= 0:
             return None
         return datetime.fromtimestamp(data.history.timestamp, tz=timezone.utc)
+
+
+class SesameTouchPasswordCountSensor(CoordinatorEntity[Sesame5Coordinator], SensorEntity):
+    """Number of registered passwords on Sesame Touch."""
+
+    _attr_has_entity_name = True
+    _attr_name = "Password Count"
+    _attr_icon = "mdi:numeric"
+    _attr_state_class = SensorStateClass.MEASUREMENT
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+
+    def __init__(self, coordinator: Sesame5Coordinator, entry: Sesame5ConfigEntry) -> None:
+        super().__init__(coordinator)
+        self._attr_unique_id = f"{coordinator.address}_password_count"
+        self._attr_device_info = get_device_info(coordinator, entry)
+
+    @property
+    def native_value(self) -> int | None:
+        data = self.coordinator.data
+        if not data or not data.mech_status:
+            return None
+        return data.mech_status.password_count
+
+
+class SesameTouchFingerprintCountSensor(CoordinatorEntity[Sesame5Coordinator], SensorEntity):
+    """Number of registered fingerprints on Sesame Touch."""
+
+    _attr_has_entity_name = True
+    _attr_name = "Fingerprint Count"
+    _attr_icon = "mdi:fingerprint"
+    _attr_state_class = SensorStateClass.MEASUREMENT
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+
+    def __init__(self, coordinator: Sesame5Coordinator, entry: Sesame5ConfigEntry) -> None:
+        super().__init__(coordinator)
+        self._attr_unique_id = f"{coordinator.address}_fingerprint_count"
+        self._attr_device_info = get_device_info(coordinator, entry)
+
+    @property
+    def native_value(self) -> int | None:
+        data = self.coordinator.data
+        if not data or not data.mech_status:
+            return None
+        return data.mech_status.fingerprint_count
+
+
+class SesameTouchCardCountSensor(CoordinatorEntity[Sesame5Coordinator], SensorEntity):
+    """Number of registered cards on Sesame Touch."""
+
+    _attr_has_entity_name = True
+    _attr_name = "Card Count"
+    _attr_icon = "mdi:smart-card"
+    _attr_state_class = SensorStateClass.MEASUREMENT
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+
+    def __init__(self, coordinator: Sesame5Coordinator, entry: Sesame5ConfigEntry) -> None:
+        super().__init__(coordinator)
+        self._attr_unique_id = f"{coordinator.address}_card_count"
+        self._attr_device_info = get_device_info(coordinator, entry)
+
+    @property
+    def native_value(self) -> int | None:
+        data = self.coordinator.data
+        if not data or not data.mech_status:
+            return None
+        return data.mech_status.card_count

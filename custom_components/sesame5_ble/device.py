@@ -19,6 +19,7 @@ from .const import (
     LOGIN_TIMEOUT,
     RX_UUID,
     SERVICE_UUID,
+    TOUCH_MODELS,
     TX_UUID,
     ItemCode,
     OpCode,
@@ -32,6 +33,9 @@ from .helpers import (
     Sesame5MechSetting,
     Sesame5MechStatus,
     create_history_tag,
+    format_passcode_add_payload,
+    format_passcode_delete_payload,
+    parse_passcode_records,
 )
 
 if TYPE_CHECKING:
@@ -54,11 +58,13 @@ class Sesame5Device:
         secret_key: bytes,
         hass: HomeAssistant,
         history_tag: str = DEFAULT_HISTORY_TAG,
+        model_id: int | None = None,
     ) -> None:
         self._address = address
         self._secret_key = secret_key
         self._hass = hass
         self._history_tag = history_tag
+        self._model_id = model_id
 
         self._client: BleakClient | None = None
         self._tx_char: BleakGATTCharacteristic | None = None
@@ -69,6 +75,7 @@ class Sesame5Device:
         self._mech_status: Sesame5MechStatus | None = None
         self._mech_settings: Sesame5MechSetting | None = None
         self._history: Sesame5HistoryRecord | None = None
+        self._passcodes: list[dict[str, Any]] = []
 
         self._state = STATE_DISCONNECTED
         self._callbacks: list[Callable[[], None]] = []
@@ -76,11 +83,24 @@ class Sesame5Device:
 
         self._initial_token_received = asyncio.Event()
         self._logged_in = asyncio.Event()
+        self._passcodes_received = asyncio.Event()
         self._command_response_futures: dict[int, asyncio.Future[tuple[ResultCode, bytes]]] = {}
 
     @property
     def address(self) -> str:
         return self._address
+
+    @property
+    def model_id(self) -> int | None:
+        return self._model_id
+
+    @property
+    def is_keypad(self) -> bool:
+        if self._model_id is not None and self._model_id in TOUCH_MODELS:
+            return True
+        if self._mech_status is not None and self._mech_status.card_count is not None:
+            return True
+        return False
 
     @property
     def is_connected(self) -> bool:
@@ -101,6 +121,10 @@ class Sesame5Device:
     @property
     def history(self) -> Sesame5HistoryRecord | None:
         return self._history
+
+    @property
+    def passcodes(self) -> list[dict[str, Any]]:
+        return list(self._passcodes)
 
     def add_update_callback(self, callback: Callable[[], None]) -> None:
         self._callbacks.append(callback)
@@ -270,18 +294,29 @@ class Sesame5Device:
         elif item_code == ItemCode.MECH_STATUS.value:
             try:
                 self._mech_status = Sesame5MechStatus(pub_data)
-                LOGGER.debug(
-                    "[%s] MECH_STATUS: locked=%s, pos=%d, target=%d, batt=%d%% (%.2fV)",
-                    self._address,
-                    self._mech_status.is_locked(),
-                    self._mech_status.position,
-                    self._mech_status.target_position,
-                    self._mech_status.battery_percentage,
-                    self._mech_status.battery_voltage,
-                )
+                if self._mech_status.card_count is not None:
+                    LOGGER.debug(
+                        "[%s] MECH_STATUS (Keypad/Touch): cards=%d, fps=%d, pwds=%d, batt=%d%% (%.2fV)",
+                        self._address,
+                        self._mech_status.card_count,
+                        self._mech_status.fingerprint_count,
+                        self._mech_status.password_count,
+                        self._mech_status.battery_percentage,
+                        self._mech_status.battery_voltage,
+                    )
+                else:
+                    LOGGER.debug(
+                        "[%s] MECH_STATUS: locked=%s, pos=%d, target=%d, batt=%d%% (%.2fV)",
+                        self._address,
+                        self._mech_status.is_locked(),
+                        self._mech_status.position,
+                        self._mech_status.target_position,
+                        self._mech_status.battery_percentage,
+                        self._mech_status.battery_voltage,
+                    )
                 self._notify_update()
-                if self.is_ready:
-                    # Request history when mechanical status changes
+                if self.is_ready and not self.is_keypad:
+                    # Request history when mechanical status changes on a lock
                     asyncio.create_task(self.request_history())
             except Exception:
                 LOGGER.exception("[%s] Failed to parse MECH_STATUS", self._address)
@@ -299,6 +334,25 @@ class Sesame5Device:
                 self._notify_update()
             except Exception:
                 LOGGER.exception("[%s] Failed to parse MECH_SETTING", self._address)
+
+        elif item_code == ItemCode.SSM_OS3_PASSCODE_FIRST.value:
+            LOGGER.debug("[%s] Passcode list reception started", self._address)
+            self._passcodes = []
+            self._passcodes_received.clear()
+
+        elif item_code == ItemCode.SSM_OS3_PASSCODE_NOTIFY.value:
+            records = parse_passcode_records(pub_data)
+            LOGGER.debug("[%s] Received %d passcode records", self._address, len(records))
+            self._passcodes.extend(records)
+
+        elif item_code == ItemCode.SSM_OS3_PASSCODE_LAST.value:
+            LOGGER.debug("[%s] Passcode list reception finished (total %d)", self._address, len(self._passcodes))
+            self._passcodes_received.set()
+            self._notify_update()
+
+        elif item_code == ItemCode.SSM_OS3_PASSCODE_DELETE.value:
+            LOGGER.info("[%s] Keypad reported passcode deletion event", self._address)
+            self._notify_update()
 
     async def _handle_response(self, item_code: int, result_code_val: int, resp_data: bytes) -> None:
         """Handle synchronous command responses from the lock."""
@@ -400,6 +454,38 @@ class Sesame5Device:
         except Exception as err:
             LOGGER.debug("[%s] Failed to fetch history record (non-fatal): %s", self._address, err)
         return None
+
+    async def add_passcode(self, passcode: str, name: str = "HA") -> None:
+        """Add a passcode to the keypad."""
+        payload = format_passcode_add_payload(passcode, name)
+        LOGGER.info("[%s] Adding passcode '%s' (name: %s)", self._address, passcode, name)
+        result, _ = await self.send_command(ItemCode.SSM_OS3_PASSCODE_ADD, payload, is_encrypted=True)
+        if result != ResultCode.SUCCESS:
+            raise RuntimeError(f"Add passcode failed with result: {result.name}")
+        LOGGER.info("[%s] Passcode '%s' added successfully", self._address, passcode)
+
+    async def delete_passcode(self, passcode: str) -> None:
+        """Delete a passcode from the keypad."""
+        payload = format_passcode_delete_payload(passcode)
+        LOGGER.info("[%s] Deleting passcode '%s'", self._address, passcode)
+        result, _ = await self.send_command(ItemCode.SSM_OS3_PASSCODE_DELETE, payload, is_encrypted=True)
+        if result != ResultCode.SUCCESS:
+            raise RuntimeError(f"Delete passcode failed with result: {result.name}")
+        LOGGER.info("[%s] Passcode '%s' deleted successfully", self._address, passcode)
+
+    async def request_passcodes(self, timeout: float = 5.0) -> list[dict[str, Any]]:
+        """Request and return the list of passcodes registered on the device."""
+        if not self.is_ready:
+            raise RuntimeError("Device not ready to receive commands")
+        self._passcodes = []
+        self._passcodes_received.clear()
+        LOGGER.debug("[%s] Requesting passcode list from keypad", self._address)
+        await self.send_command(ItemCode.SSM_OS3_PASSCODE_GET, b"", is_encrypted=True)
+        try:
+            await asyncio.wait_for(self._passcodes_received.wait(), timeout=timeout)
+        except asyncio.TimeoutError:
+            LOGGER.debug("[%s] Timeout waiting for passcode list, returning current items", self._address)
+        return list(self._passcodes)
 
     async def disconnect(self) -> None:
         """Disconnect GATT client gracefully."""

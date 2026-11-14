@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from typing import TYPE_CHECKING, Any
 
 from homeassistant.components.lock import LockEntity, LockEntityFeature
@@ -9,6 +10,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
+from .const import CONF_MODEL_ID, LOCK_MODELS, TOUCH_MODELS
 from .coordinator import Sesame5Coordinator
 from .helpers import get_device_info
 
@@ -19,13 +21,31 @@ if TYPE_CHECKING:
 else:
     Sesame5ConfigEntry = Any
 
+LOGGER = logging.getLogger(__name__)
+
 
 async def async_setup_entry(
     hass: HomeAssistant,
     entry: Sesame5ConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
-    coordinator = entry.runtime_data
+    """Set up Sesame 5 lock platform."""
+    coordinator: Sesame5Coordinator = entry.runtime_data
+    model_id = entry.data.get(CONF_MODEL_ID)
+    if model_id is not None and model_id not in LOCK_MODELS:
+        LOGGER.info(
+            "[%s] Device (model %s) is not a door lock (e.g. Touch/Keypad), skipping lock entity",
+            entry.title,
+            model_id,
+        )
+        return
+    if coordinator.device.is_keypad:
+        LOGGER.info(
+            "[%s] Device is detected as a keypad/touch device, skipping lock entity",
+            entry.title,
+        )
+        return
+
     async_add_entities([Sesame5BleLock(coordinator, entry)])
 
 
