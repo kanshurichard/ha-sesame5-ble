@@ -72,6 +72,23 @@ class Sesame5BleLock(CoordinatorEntity[Sesame5Coordinator], LockEntity):
             and not data.mech_status.is_in_unlock_range
         )
 
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Return entity specific state attributes."""
+        attrs: dict[str, Any] = {
+            "read_only_mode": self.coordinator.read_only,
+        }
+        data = self.coordinator.data
+        if data and data.history:
+            hist = data.history
+            attrs["last_operation_method"] = hist.description_zh
+            attrs["last_operation_source"] = hist.source
+            attrs["last_operation_action"] = hist.action
+            attrs["last_operation_time"] = hist.iso_timestamp
+            if hist.tag_name:
+                attrs["last_operation_tag"] = hist.tag_name
+        return attrs
+
     async def async_lock(self, **kwargs: Any) -> None:
         """Lock the door."""
         await self.coordinator.lock()

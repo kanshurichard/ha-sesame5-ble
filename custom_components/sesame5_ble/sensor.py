@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any
 
 from homeassistant.components.sensor import (
@@ -36,6 +37,8 @@ async def async_setup_entry(
             Sesame5BatterySensor(coordinator, entry),
             Sesame5VoltageSensor(coordinator, entry),
             Sesame5PositionSensor(coordinator, entry),
+            Sesame5LastOperationSensor(coordinator, entry),
+            Sesame5LastOperationTimeSensor(coordinator, entry),
         ]
     )
 
@@ -105,3 +108,59 @@ class Sesame5PositionSensor(CoordinatorEntity[Sesame5Coordinator], SensorEntity)
         if not data or not data.mech_status:
             return None
         return data.mech_status.position
+
+
+class Sesame5LastOperationSensor(CoordinatorEntity[Sesame5Coordinator], SensorEntity):
+    """Sensor displaying the last lock/unlock operation method (e.g. inside, fingerprint, auto-lock)."""
+
+    _attr_has_entity_name = True
+    _attr_name = "Last Operation"
+    _attr_icon = "mdi:lock-open-check"
+
+    def __init__(self, coordinator: Sesame5Coordinator, entry: Sesame5ConfigEntry) -> None:
+        super().__init__(coordinator)
+        self._attr_unique_id = f"{coordinator.address}_last_operation"
+        self._attr_device_info = get_device_info(coordinator, entry)
+
+    @property
+    def native_value(self) -> str | None:
+        data = self.coordinator.data
+        if not data or not data.history:
+            return None
+        return data.history.description_zh
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        data = self.coordinator.data
+        if not data or not data.history:
+            return {}
+        hist = data.history
+        return {
+            "source": hist.source,
+            "action": hist.action,
+            "tag": hist.tag_name,
+            "accessory_type": hist.history_tag_type.name if hist.history_tag_type else None,
+            "record_id": hist.record_id,
+            "timestamp": hist.iso_timestamp,
+        }
+
+
+class Sesame5LastOperationTimeSensor(CoordinatorEntity[Sesame5Coordinator], SensorEntity):
+    """Sensor displaying the timestamp of the last lock/unlock operation."""
+
+    _attr_has_entity_name = True
+    _attr_name = "Last Operation Time"
+    _attr_device_class = SensorDeviceClass.TIMESTAMP
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+
+    def __init__(self, coordinator: Sesame5Coordinator, entry: Sesame5ConfigEntry) -> None:
+        super().__init__(coordinator)
+        self._attr_unique_id = f"{coordinator.address}_last_operation_time"
+        self._attr_device_info = get_device_info(coordinator, entry)
+
+    @property
+    def native_value(self) -> datetime | None:
+        data = self.coordinator.data
+        if not data or not data.history or data.history.timestamp <= 0:
+            return None
+        return datetime.fromtimestamp(data.history.timestamp, tz=timezone.utc)

@@ -21,7 +21,8 @@
         "description": "请输入官方 Sesame App 中分享的密匙。支持以下任意格式：\n1. 完整的二维码 URL (`ssm://UI?t=sk&sk=...`)\n2. 扫描二维码得到的 Base64 编码字符串\n3. 32 位 Hex 格式的 Secret Key",
         "data": {
           "secret_key": "Secret Key / 二维码内容",
-          "history_tag": "开门记录标记 (App 历史记录中显示的名称)"
+          "history_tag": "开门记录标记 (App 历史记录中显示的名称)",
+          "read_only": "只读模式 (仅监控状态与电量，禁止远程开锁/关锁以防误操作)"
         }
       }
     },
@@ -41,7 +42,8 @@
         "title": "Sesame 5 BLE 选项",
         "data": {
           "refresh_interval": "定期状态更新间隔 (分钟，0 表示仅按需连接，推荐以省电)",
-          "history_tag": "开门记录标记 (App 历史记录中显示的名称)"
+          "history_tag": "开门记录标记 (App 历史记录中显示的名称)",
+          "read_only": "只读保护模式 (开启后禁止远程开锁/关锁)"
         }
       }
     }
@@ -56,6 +58,12 @@
       },
       "angle": {
         "name": "旋钮角度"
+      },
+      "last_operation": {
+        "name": "最后操作方式"
+      },
+      "last_operation_time": {
+        "name": "最后操作时间"
       }
     },
     "binary_sensor": {

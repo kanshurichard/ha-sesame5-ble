@@ -8,11 +8,19 @@ from datetime import timedelta
 import logging
 from typing import TYPE_CHECKING
 
+from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
-from .const import CONF_HISTORY_TAG, CONF_REFRESH_INTERVAL, DEFAULT_HISTORY_TAG, DEFAULT_REFRESH_INTERVAL
+from .const import (
+    CONF_HISTORY_TAG,
+    CONF_READ_ONLY,
+    CONF_REFRESH_INTERVAL,
+    DEFAULT_HISTORY_TAG,
+    DEFAULT_READ_ONLY,
+    DEFAULT_REFRESH_INTERVAL,
+)
 from .device import Sesame5Device
-from .helpers import Sesame5MechSetting, Sesame5MechStatus
+from .helpers import Sesame5HistoryRecord, Sesame5MechSetting, Sesame5MechStatus
 
 if TYPE_CHECKING:
     from homeassistant.config_entries import ConfigEntry
@@ -27,6 +35,7 @@ class Sesame5State:
 
     mech_status: Sesame5MechStatus | None
     mech_settings: Sesame5MechSetting | None
+    history: Sesame5HistoryRecord | None = None
 
 
 class Sesame5Coordinator(DataUpdateCoordinator[Sesame5State]):
@@ -69,10 +78,22 @@ class Sesame5Coordinator(DataUpdateCoordinator[Sesame5State]):
         return DEFAULT_HISTORY_TAG
 
     @property
+    def read_only(self) -> bool:
+        if self.config_entry:
+            return bool(
+                self.config_entry.options.get(
+                    CONF_READ_ONLY,
+                    self.config_entry.data.get(CONF_READ_ONLY, DEFAULT_READ_ONLY),
+                )
+            )
+        return DEFAULT_READ_ONLY
+
+    @property
     def _current_state(self) -> Sesame5State:
         return Sesame5State(
             mech_status=self._device.mech_status,
             mech_settings=self._device.mech_settings,
+            history=self._device.history,
         )
 
     async def _async_update_data(self) -> Sesame5State:
@@ -98,16 +119,22 @@ class Sesame5Coordinator(DataUpdateCoordinator[Sesame5State]):
 
     async def lock(self, tag: str | None = None) -> None:
         """Lock the door."""
+        if self.read_only:
+            raise HomeAssistantError("Sesame 5 当前处于只读模式，已禁止远程施锁操作。如需操作，请在集成选项中关闭只读模式。")
         await self._ensure_connected()
         await self._device.lock(tag or self.history_tag)
 
     async def unlock(self, tag: str | None = None) -> None:
         """Unlock the door."""
+        if self.read_only:
+            raise HomeAssistantError("Sesame 5 当前处于只读模式，已禁止远程解锁操作。如需操作，请在集成选项中关闭只读模式。")
         await self._ensure_connected()
         await self._device.unlock(tag or self.history_tag)
 
     async def toggle(self, tag: str | None = None) -> None:
         """Toggle lock state."""
+        if self.read_only:
+            raise HomeAssistantError("Sesame 5 当前处于只读模式，已禁止远程操作。如需操作，请在集成选项中关闭只读模式。")
         await self._ensure_connected()
         await self._device.toggle(tag or self.history_tag)
 

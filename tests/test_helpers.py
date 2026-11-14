@@ -8,6 +8,8 @@ from uuid import UUID
 import tests  # Preload mock stubs for homeassistant/bleak
 
 from custom_components.sesame5_ble.const import (
+    HistoryTagType,
+    HistoryType,
     ItemCode,
     MechStatusBitFlag,
     PacketType,
@@ -16,6 +18,7 @@ from custom_components.sesame5_ble.const import (
 from custom_components.sesame5_ble.helpers import (
     BleFrameReceiver,
     BleFrameTransmitter,
+    Sesame5HistoryRecord,
     Sesame5MechSetting,
     Sesame5MechStatus,
     calculate_battery_percentage,
@@ -147,6 +150,50 @@ class TestHelpers(unittest.TestCase):
 
         self.assertTrue(final_enc)
         self.assertEqual(final_msg, long_msg)
+
+    def test_history_record_parsing(self):
+        # Format: [result(1B), record_id(4B), type(1B), timestamp(4B), mecha_status(7B), tag_data...]
+        # 1. Manual inside unlock (type=8)
+        data_manual = struct.pack("<BiBI7sB", 0, 101, 8, 1731580000, b"\x00" * 7, 0)
+        hist_manual = Sesame5HistoryRecord(data_manual)
+        self.assertEqual(hist_manual.action, "unlock")
+        self.assertEqual(hist_manual.source, "inside")
+        self.assertEqual(hist_manual.description_zh, "门内手动解锁")
+
+        # 2. Manual inside lock (type=7)
+        data_lock = struct.pack("<BiBI7sB", 0, 102, 7, 1731580000, b"\x00" * 7, 0)
+        hist_lock = Sesame5HistoryRecord(data_lock)
+        self.assertEqual(hist_lock.action, "lock")
+        self.assertEqual(hist_lock.source, "inside")
+        self.assertEqual(hist_lock.description_zh, "门内手动上锁")
+
+        # 3. Auto-lock (type=6)
+        data_auto = struct.pack("<BiBI7sB", 0, 103, 6, 1731580000, b"\x00" * 7, 0)
+        hist_auto = Sesame5HistoryRecord(data_auto)
+        self.assertEqual(hist_auto.action, "lock")
+        self.assertEqual(hist_auto.source, "auto")
+        self.assertEqual(hist_auto.description_zh, "自动上锁")
+
+        # 4. Fingerprint unlock via accessory (type=2, tag_len=0, tag_type=1)
+        data_fp = struct.pack("<BiBI7sBB16s", 0, 104, 2, 1731580000, b"\x00" * 7, 0, 1, b"\x11" * 16)
+        hist_fp = Sesame5HistoryRecord(data_fp)
+        self.assertEqual(hist_fp.action, "unlock")
+        self.assertEqual(hist_fp.source, "outside")
+        self.assertEqual(hist_fp.description_zh, "门外指纹解锁")
+
+        # 5. Password unlock via keypad (type=2, tag_len=0, tag_type=2)
+        data_pw = struct.pack("<BiBI7sBB16s", 0, 105, 2, 1731580000, b"\x00" * 7, 0, 2, b"\x22" * 16)
+        hist_pw = Sesame5HistoryRecord(data_pw)
+        self.assertEqual(hist_pw.description_zh, "门外密码解锁")
+
+        # 6. Bluetooth App unlock with name tag "HA"
+        tag_bytes = b"HA"
+        data_ble = struct.pack("<BiBI7sB", 0, 106, 2, 1731580000, b"\x00" * 7, len(tag_bytes)) + tag_bytes
+        hist_ble = Sesame5HistoryRecord(data_ble)
+        self.assertEqual(hist_ble.action, "unlock")
+        self.assertEqual(hist_ble.source, "app")
+        self.assertEqual(hist_ble.tag_name, "HA")
+        self.assertEqual(hist_ble.description_zh, "蓝牙/App 解锁 (HA)")
 
 
 if __name__ == "__main__":

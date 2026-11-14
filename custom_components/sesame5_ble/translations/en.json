@@ -21,7 +21,8 @@
         "description": "Enter the Secret Key from your Sesame app. You can paste either:\n1. The full QR code URL (`ssm://UI?t=sk&sk=...`)\n2. The base64 key string scanned from the QR code\n3. The 32-character hex secret key",
         "data": {
           "secret_key": "Secret Key / QR Code URL",
-          "history_tag": "History Tag (Name shown in App log)"
+          "history_tag": "History Tag (Name shown in App log)",
+          "read_only": "Read-only mode (Monitor state and battery only; disable remote lock/unlock)"
         }
       }
     },
@@ -41,7 +42,8 @@
         "title": "Sesame 5 BLE Options",
         "data": {
           "refresh_interval": "Periodic refresh interval in minutes (0 = On-demand only, recommended for battery life)",
-          "history_tag": "History Tag (Name shown in App unlock history)"
+          "history_tag": "History Tag (Name shown in App unlock history)",
+          "read_only": "Read-only mode (Disables remote lock/unlock)"
         }
       }
     }
@@ -56,6 +58,12 @@
       },
       "angle": {
         "name": "Angle"
+      },
+      "last_operation": {
+        "name": "Last Operation"
+      },
+      "last_operation_time": {
+        "name": "Last Operation Time"
       }
     },
     "binary_sensor": {

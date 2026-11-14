@@ -21,7 +21,8 @@
         "description": "公式 Sesame アプリの合鍵情報を入力してください。以下の形式に対応しています：\n1. QRコードのフルURL (`ssm://UI?t=sk&sk=...`)\n2. QRコードから読み取った Base64 文字列\n3. 32桁の Hex シークレットキー",
         "data": {
           "secret_key": "シークレットキー / QRコード情報",
-          "history_tag": "履歴タグ (アプリの解錠履歴に表示される名前)"
+          "history_tag": "履歴タグ (アプリの解錠履歴に表示される名前)",
+          "read_only": "読み取り専用モード (誤操作防止のため遠隔解錠・施錠を禁止)"
         }
       }
     },
@@ -41,7 +42,8 @@
         "title": "Sesame 5 BLE オプション",
         "data": {
           "refresh_interval": "定期更新間隔（分、0 = オンデマンド接続のみ・省電力推奨）",
-          "history_tag": "履歴タグ (アプリの履歴に表示される名前)"
+          "history_tag": "履歴タグ (アプリの履歴に表示される名前)",
+          "read_only": "読み取り専用保護モード (遠隔施錠・解錠を無効化)"
         }
       }
     }
@@ -56,6 +58,12 @@
       },
       "angle": {
         "name": "サムターン角度"
+      },
+      "last_operation": {
+        "name": "最終操作方法"
+      },
+      "last_operation_time": {
+        "name": "最終操作時刻"
       }
     },
     "binary_sensor": {

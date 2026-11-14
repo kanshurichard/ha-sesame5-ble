@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import base64
+from datetime import datetime, timezone
 import struct
 import urllib.parse
 from uuid import UUID
@@ -11,6 +12,8 @@ from typing import TYPE_CHECKING, Any
 from .const import (
     BATTERY_PERCENTAGES,
     DOMAIN,
+    HistoryTagType,
+    HistoryType,
     ItemCode,
     MechStatusBitFlag,
     OpCode,
@@ -191,6 +194,173 @@ class Sesame5MechSetting:
     @property
     def is_configured(self) -> bool:
         return self.lock_position != self.unlock_position
+
+
+class Sesame5HistoryRecord:
+    """Parsed operation history record from Sesame lock."""
+
+    def __init__(self, raw_data: bytes) -> None:
+        """Parse history response payload.
+
+        Expected format:
+        [result_code (1B), record_id (4B), hist_type (1B), timestamp (4B), mecha_status (7B), tag_data...]
+        """
+        if len(raw_data) < 17:
+            raise ValueError(f"History payload too short: {len(raw_data)} bytes, expected at least 17")
+
+        self.result = ResultCode(raw_data[0]) if raw_data[0] in ResultCode._value2member_map_ else ResultCode.UNKNOWN
+        self.record_id = int.from_bytes(raw_data[1:5], "little")
+        hist_type_val = raw_data[5]
+        self.timestamp = int.from_bytes(raw_data[6:10], "little")
+        self.mecha_status_raw = raw_data[10:17]
+
+        self.tag_name: str = ""
+        self.history_tag_type: HistoryTagType | None = None
+        self.accessory_uuid: str | None = None
+
+        tag_data = raw_data[17:]
+        if tag_data:
+            tag_len = tag_data[0]
+            if hist_type_val in (HistoryType.BLE_LOCK.value, HistoryType.BLE_UNLOCK.value):
+                if tag_len >= 60:
+                    hist_type_val = (
+                        HistoryType.WEB_LOCK.value
+                        if hist_type_val == HistoryType.BLE_LOCK.value
+                        else HistoryType.WEB_UNLOCK.value
+                    )
+                    tag_len %= 30
+                elif tag_len >= 30:
+                    hist_type_val = (
+                        HistoryType.WM2_LOCK.value
+                        if hist_type_val == HistoryType.BLE_LOCK.value
+                        else HistoryType.WM2_UNLOCK.value
+                    )
+                    tag_len %= 30
+
+            tag_len = min(tag_len, 29)
+            if tag_len > 0 and len(tag_data) >= 1 + tag_len:
+                self.tag_name = tag_data[1 : 1 + tag_len].decode("utf-8", errors="ignore").strip()
+            elif len(tag_data) >= 18:
+                tag_type_val = tag_data[1]
+                if tag_type_val in HistoryTagType._value2member_map_:
+                    self.history_tag_type = HistoryTagType(tag_type_val)
+                self.accessory_uuid = tag_data[2:18].hex()
+
+        self.history_type = (
+            HistoryType(hist_type_val)
+            if hist_type_val in HistoryType._value2member_map_
+            else HistoryType.NONE
+        )
+
+    @property
+    def iso_timestamp(self) -> str:
+        if self.timestamp <= 0:
+            return ""
+        return datetime.fromtimestamp(self.timestamp, tz=timezone.utc).isoformat()
+
+    @property
+    def action(self) -> str:
+        """Return 'lock', 'unlock', or 'other'."""
+        if self.history_type in (
+            HistoryType.BLE_UNLOCK,
+            HistoryType.MANUAL_UNLOCKED,
+            HistoryType.DRIVE_UNLOCKED,
+            HistoryType.WM2_UNLOCK,
+            HistoryType.WEB_UNLOCK,
+        ):
+            return "unlock"
+        if self.history_type in (
+            HistoryType.BLE_LOCK,
+            HistoryType.MANUAL_LOCKED,
+            HistoryType.AUTOLOCK,
+            HistoryType.DRIVE_LOCKED,
+            HistoryType.WM2_LOCK,
+            HistoryType.WEB_LOCK,
+        ):
+            return "lock"
+        return "other"
+
+    @property
+    def source(self) -> str:
+        """Return operation source: inside, outside, auto, remote, app."""
+        if self.history_type in (HistoryType.MANUAL_LOCKED, HistoryType.MANUAL_UNLOCKED, HistoryType.MANUAL_ELSE):
+            return "inside"
+        if self.history_type == HistoryType.AUTOLOCK:
+            return "auto"
+        if self.history_tag_type in (
+            HistoryTagType.FINGERPRINT,
+            HistoryTagType.PASSWORD,
+            HistoryTagType.NFC_CARD,
+            HistoryTagType.FACE,
+            HistoryTagType.PALM_VEIN,
+            HistoryTagType.TOUCH_LOCK,
+            HistoryTagType.TOUCH_PRO_LOCK,
+        ):
+            return "outside"
+        if self.history_tag_type in (HistoryTagType.REMOTE, HistoryTagType.REMOTE_NANO):
+            return "remote"
+        if self.history_type in (
+            HistoryType.WM2_LOCK,
+            HistoryType.WM2_UNLOCK,
+            HistoryType.WEB_LOCK,
+            HistoryType.WEB_UNLOCK,
+        ):
+            return "remote"
+        if self.history_type in (HistoryType.BLE_LOCK, HistoryType.BLE_UNLOCK):
+            return "app"
+        return "unknown"
+
+    @property
+    def description_zh(self) -> str:
+        """Human-readable description in Chinese."""
+        if self.history_type == HistoryType.MANUAL_UNLOCKED:
+            return "门内手动解锁"
+        if self.history_type == HistoryType.MANUAL_LOCKED:
+            return "门内手动上锁"
+        if self.history_type == HistoryType.MANUAL_ELSE:
+            return "门内手动旋转"
+
+        if self.history_type == HistoryType.AUTOLOCK:
+            return "自动上锁"
+
+        if self.history_tag_type == HistoryTagType.FINGERPRINT:
+            return "门外指纹解锁"
+        if self.history_tag_type == HistoryTagType.PASSWORD:
+            return "门外密码解锁"
+        if self.history_tag_type == HistoryTagType.NFC_CARD:
+            return "门外卡片解锁 (NFC)"
+        if self.history_tag_type == HistoryTagType.FACE:
+            return "门外面部识别解锁"
+        if self.history_tag_type == HistoryTagType.PALM_VEIN:
+            return "门外掌静脉解锁"
+        if self.history_tag_type in (HistoryTagType.TOUCH_LOCK, HistoryTagType.TOUCH_PRO_LOCK):
+            return "门外按键上锁 (Touch)"
+        if self.history_tag_type in (HistoryTagType.REMOTE, HistoryTagType.REMOTE_NANO):
+            return "遥控器解锁" if self.action == "unlock" else "遥控器上锁"
+        if self.history_tag_type == HistoryTagType.OPEN_SENSOR:
+            return "门磁联动开闭"
+
+        if self.history_type == HistoryType.WM2_UNLOCK:
+            return "Wi-Fi 网关远程解锁"
+        if self.history_type == HistoryType.WM2_LOCK:
+            return "Wi-Fi 网关远程上锁"
+        if self.history_type == HistoryType.WEB_UNLOCK:
+            return "云端 Web API 解锁"
+        if self.history_type == HistoryType.WEB_LOCK:
+            return "云端 Web API 上锁"
+
+        if self.history_type == HistoryType.BLE_UNLOCK:
+            tag = f" ({self.tag_name})" if self.tag_name else ""
+            return f"蓝牙/App 解锁{tag}"
+        if self.history_type == HistoryType.BLE_LOCK:
+            tag = f" ({self.tag_name})" if self.tag_name else ""
+            return f"蓝牙/App 上锁{tag}"
+
+        if self.action == "unlock":
+            return "已解锁"
+        if self.action == "lock":
+            return "已上锁"
+        return "未知操作"
 
 
 class Sesame5Advertisement:

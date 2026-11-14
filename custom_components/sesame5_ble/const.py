@@ -14,9 +14,11 @@ CONF_MODEL = "model"
 CONF_MODEL_ID = "model_id"
 CONF_REFRESH_INTERVAL = "refresh_interval"
 CONF_HISTORY_TAG = "history_tag"
+CONF_READ_ONLY = "read_only"
 
 DEFAULT_REFRESH_INTERVAL = 0  # 0 = on-demand only (saves battery)
 DEFAULT_HISTORY_TAG = "HA"
+DEFAULT_READ_ONLY = False
 
 # BLE GATT Service & Characteristics (Sesame standard)
 SERVICE_UUID = "0000fd81-0000-1000-8000-00805f9b34fb"
@@ -134,6 +136,54 @@ class ResultCode(Enum):
     BUSY = 7
     INVALID_PARAM = 8
     INVALID_ACTION = 9
+
+
+class HistoryType(Enum):
+    """Operation history event type reported by Sesame lock."""
+
+    NONE = 0
+    BLE_LOCK = 1
+    BLE_UNLOCK = 2
+    TIME_CHANGED = 3
+    AUTOLOCK_UPDATED = 4
+    MECH_SETTING_UPDATED = 5
+    AUTOLOCK = 6
+    MANUAL_LOCKED = 7
+    MANUAL_UNLOCKED = 8
+    MANUAL_ELSE = 9
+    DRIVE_LOCKED = 10
+    DRIVE_UNLOCKED = 11
+    DRIVE_FAILED = 12
+    BLE_ADV_PARAM_UPDATED = 13
+    WM2_LOCK = 14
+    WM2_UNLOCK = 15
+    WEB_LOCK = 16
+    WEB_UNLOCK = 17
+    BLE_CLICK = 18
+    DRIVE_CLICKED = 21
+
+
+class HistoryTagType(Enum):
+    """Access accessory/trigger type for Sesame Touch, Remote, or Face devices."""
+
+    NFC_CARD = 0
+    FINGERPRINT = 1
+    PASSWORD = 2
+    FACE = 3
+    PALM_VEIN = 4
+    TOUCH_PRO_LOCK = 5
+    TOUCH_LOCK = 6
+    OPEN_SENSOR = 7
+    FACE_PRO_LOCK = 8
+    FACE_LOCK = 9
+    REMOTE = 10
+    REMOTE_NANO = 11
+    BIZ_USER = 12
+    WEB_API = 13
+    ANDROID_BLE = 14
+    IOS_BLE = 15
+    ANDROID_WIFI = 16
+    IOS_WIFI = 17
 
 
 class MechStatusBitFlag(IntFlag):

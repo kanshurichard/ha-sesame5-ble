@@ -22,13 +22,16 @@ from homeassistant.helpers.selector import (
 )
 
 from .const import (
+    COMPANY_ID,
     CONF_DEVICE_ID,
     CONF_HISTORY_TAG,
     CONF_MODEL,
     CONF_MODEL_ID,
+    CONF_READ_ONLY,
     CONF_REFRESH_INTERVAL,
     CONF_SECRET_KEY,
     DEFAULT_HISTORY_TAG,
+    DEFAULT_READ_ONLY,
     DEFAULT_REFRESH_INTERVAL,
     DOMAIN,
     PRODUCT_NAMES,
@@ -46,8 +49,9 @@ def _scan_sesame5_devices(hass: HomeAssistant) -> list[dict[str, Any]]:
     discovered_ble = list(async_discovered_service_info(hass))
 
     for info in discovered_ble:
-        service_uuids = [u.lower() for u in info.advertisement.service_uuids]
-        if SERVICE_UUID.lower() not in service_uuids:
+        has_service = SERVICE_UUID.lower() in [u.lower() for u in info.advertisement.service_uuids]
+        has_company = COMPANY_ID in info.advertisement.manufacturer_data
+        if not (has_service or has_company):
             continue
 
         adv = Sesame5Advertisement(info.device, info.advertisement.manufacturer_data)
@@ -221,6 +225,7 @@ class Sesame5ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                             CONF_MODEL: self._selected_model,
                             CONF_MODEL_ID: self._selected_model_id,
                             CONF_HISTORY_TAG: history_tag,
+                            CONF_READ_ONLY: user_input.get(CONF_READ_ONLY, DEFAULT_READ_ONLY),
                         },
                     )
 
@@ -228,6 +233,7 @@ class Sesame5ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             {
                 vol.Required(CONF_SECRET_KEY): str,
                 vol.Optional(CONF_HISTORY_TAG, default=DEFAULT_HISTORY_TAG): str,
+                vol.Optional(CONF_READ_ONLY, default=DEFAULT_READ_ONLY): bool,
             }
         )
 
@@ -267,6 +273,10 @@ class Sesame5OptionsFlowHandler(config_entries.OptionsFlow):
             CONF_HISTORY_TAG,
             self.config_entry.data.get(CONF_HISTORY_TAG, DEFAULT_HISTORY_TAG),
         )
+        current_read_only = self.config_entry.options.get(
+            CONF_READ_ONLY,
+            self.config_entry.data.get(CONF_READ_ONLY, DEFAULT_READ_ONLY),
+        )
 
         schema = vol.Schema(
             {
@@ -274,6 +284,7 @@ class Sesame5OptionsFlowHandler(config_entries.OptionsFlow):
                     vol.Coerce(int), vol.Range(min=0, max=1440)
                 ),
                 vol.Optional(CONF_HISTORY_TAG, default=current_tag): str,
+                vol.Optional(CONF_READ_ONLY, default=current_read_only): bool,
             }
         )
 

@@ -28,6 +28,7 @@ from .crypto import OS3Cipher, generate_session_key
 from .helpers import (
     BleFrameReceiver,
     BleFrameTransmitter,
+    Sesame5HistoryRecord,
     Sesame5MechSetting,
     Sesame5MechStatus,
     create_history_tag,
@@ -67,6 +68,7 @@ class Sesame5Device:
         self._rx_buffer = BleFrameReceiver()
         self._mech_status: Sesame5MechStatus | None = None
         self._mech_settings: Sesame5MechSetting | None = None
+        self._history: Sesame5HistoryRecord | None = None
 
         self._state = STATE_DISCONNECTED
         self._callbacks: list[Callable[[], None]] = []
@@ -95,6 +97,10 @@ class Sesame5Device:
     @property
     def mech_settings(self) -> Sesame5MechSetting | None:
         return self._mech_settings
+
+    @property
+    def history(self) -> Sesame5HistoryRecord | None:
+        return self._history
 
     def add_update_callback(self, callback: Callable[[], None]) -> None:
         self._callbacks.append(callback)
@@ -215,6 +221,8 @@ class Sesame5Device:
 
             self._state = STATE_READY
             LOGGER.info("[%s] Sesame 5 authenticated successfully", self._address)
+            # Fetch latest history after successful login
+            asyncio.create_task(self.request_history())
 
     async def _on_notify(self, characteristic: BleakGATTCharacteristic, data: bytearray) -> None:
         """Handle incoming GATT notifications from RX characteristic."""
@@ -272,6 +280,9 @@ class Sesame5Device:
                     self._mech_status.battery_voltage,
                 )
                 self._notify_update()
+                if self.is_ready:
+                    # Request history when mechanical status changes
+                    asyncio.create_task(self.request_history())
             except Exception:
                 LOGGER.exception("[%s] Failed to parse MECH_STATUS", self._address)
 
@@ -302,6 +313,23 @@ class Sesame5Device:
                 LOGGER.error("[%s] LOGIN rejected with result: %s", self._address, result_code.name)
                 self._logged_in.clear()
                 self._state = STATE_DISCONNECTED
+
+        elif item_code == ItemCode.HISTORY.value and result_code == ResultCode.SUCCESS:
+            if len(resp_data) >= 16:
+                try:
+                    full_raw = bytes([result_code.value]) + resp_data
+                    self._history = Sesame5HistoryRecord(full_raw)
+                    LOGGER.info(
+                        "[%s] History update: %s (source=%s, tag=%s, time=%s)",
+                        self._address,
+                        self._history.description_zh,
+                        self._history.source,
+                        self._history.tag_name or (self._history.history_tag_type.name if self._history.history_tag_type else ""),
+                        self._history.iso_timestamp,
+                    )
+                    self._notify_update()
+                except Exception:
+                    LOGGER.exception("[%s] Failed to parse HISTORY record", self._address)
 
         # Resolve any waiting command future
         if item_code in self._command_response_futures:
@@ -356,6 +384,22 @@ class Sesame5Device:
             await self.unlock(tag)
         else:
             await self.lock(tag)
+
+    async def request_history(self) -> Sesame5HistoryRecord | None:
+        """Fetch latest operation history record from the lock."""
+        if not self.is_ready:
+            return None
+        try:
+            LOGGER.debug("[%s] Requesting latest history record from lock", self._address)
+            result, resp_data = await self.send_command(ItemCode.HISTORY, b"\x00", is_encrypted=True)
+            if result == ResultCode.SUCCESS and len(resp_data) >= 16:
+                full_raw = bytes([result.value]) + resp_data
+                self._history = Sesame5HistoryRecord(full_raw)
+                self._notify_update()
+                return self._history
+        except Exception as err:
+            LOGGER.debug("[%s] Failed to fetch history record (non-fatal): %s", self._address, err)
+        return None
 
     async def disconnect(self) -> None:
         """Disconnect GATT client gracefully."""
