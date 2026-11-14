@@ -1,0 +1,70 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Select Sesame 5 Device",
+        "description": "Choose a discovered Sesame 5 smart lock from the list below, or enter its Bluetooth MAC address manually.",
+        "data": {
+          "address": "Device"
+        }
+      },
+      "manual": {
+        "title": "Enter Device Details",
+        "description": "Please enter the Bluetooth MAC address of your Sesame 5 device.",
+        "data": {
+          "address": "Bluetooth MAC Address",
+          "model": "Model Name"
+        }
+      },
+      "auth": {
+        "title": "Authenticate with {device_name}",
+        "description": "Enter the Secret Key from your Sesame app. You can paste either:\n1. The full QR code URL (`ssm://UI?t=sk&sk=...`)\n2. The base64 key string scanned from the QR code\n3. The 32-character hex secret key",
+        "data": {
+          "secret_key": "Secret Key / QR Code URL",
+          "history_tag": "History Tag (Name shown in App log)"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Failed to connect to Sesame 5 via Bluetooth. Please ensure the lock is within range.",
+      "invalid_auth": "Authentication failed. Please verify that your Secret Key or QR Code matches this lock.",
+      "invalid_key_format": "Unrecognized key format. Please provide a valid Sesame QR code URL or 16-byte key.",
+      "device_not_found": "Selected device was not found."
+    },
+    "abort": {
+      "already_configured": "This Sesame lock is already configured."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Sesame 5 BLE Options",
+        "data": {
+          "refresh_interval": "Periodic refresh interval in minutes (0 = On-demand only, recommended for battery life)",
+          "history_tag": "History Tag (Name shown in App unlock history)"
+        }
+      }
+    }
+  },
+  "entity": {
+    "sensor": {
+      "battery": {
+        "name": "Battery"
+      },
+      "voltage": {
+        "name": "Battery Voltage"
+      },
+      "angle": {
+        "name": "Angle"
+      }
+    },
+    "binary_sensor": {
+      "battery_critical": {
+        "name": "Battery Low"
+      },
+      "moving": {
+        "name": "Motor Active"
+      }
+    }
+  }
+}

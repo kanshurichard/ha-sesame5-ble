@@ -1,0 +1,70 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "选择 Sesame 5 设备",
+        "description": "请从下方列表中选择已发现的 Sesame 5 智能锁，或者选择手动输入蓝牙 MAC 地址。",
+        "data": {
+          "address": "设备"
+        }
+      },
+      "manual": {
+        "title": "输入设备信息",
+        "description": "请输入 Sesame 5 设备的蓝牙 MAC 地址。",
+        "data": {
+          "address": "蓝牙 MAC 地址",
+          "model": "设备型号"
+        }
+      },
+      "auth": {
+        "title": "认证与配对：{device_name}",
+        "description": "请输入官方 Sesame App 中分享的密匙。支持以下任意格式：\n1. 完整的二维码 URL (`ssm://UI?t=sk&sk=...`)\n2. 扫描二维码得到的 Base64 编码字符串\n3. 32 位 Hex 格式的 Secret Key",
+        "data": {
+          "secret_key": "Secret Key / 二维码内容",
+          "history_tag": "开门记录标记 (App 历史记录中显示的名称)"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "无法通过蓝牙连接到 Sesame 5。请确保智能锁在蓝牙信号覆盖范围内。",
+      "invalid_auth": "身份认证失败，请检查输入的 Secret Key 或二维码是否属于此设备。",
+      "invalid_key_format": "未识别的密钥格式，请提供正确的 Sesame 二维码 URL 或 16 字节密钥。",
+      "device_not_found": "未找到所选设备。"
+    },
+    "abort": {
+      "already_configured": "该 Sesame 智能锁已配置过。"
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Sesame 5 BLE 选项",
+        "data": {
+          "refresh_interval": "定期状态更新间隔 (分钟，0 表示仅按需连接，推荐以省电)",
+          "history_tag": "开门记录标记 (App 历史记录中显示的名称)"
+        }
+      }
+    }
+  },
+  "entity": {
+    "sensor": {
+      "battery": {
+        "name": "电池电量"
+      },
+      "voltage": {
+        "name": "电池电压"
+      },
+      "angle": {
+        "name": "旋钮角度"
+      }
+    },
+    "binary_sensor": {
+      "battery_critical": {
+        "name": "电池电量极低"
+      },
+      "moving": {
+        "name": "电机运转中"
+      }
+    }
+  }
+}

@@ -1,0 +1,70 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Sesame 5 デバイスの選択",
+        "description": "検出された Sesame 5 スマートロックをリストから選択するか、Bluetooth MAC アドレスを手動で入力してください。",
+        "data": {
+          "address": "デバイス"
+        }
+      },
+      "manual": {
+        "title": "デバイス情報の手動入力",
+        "description": "Sesame 5 の Bluetooth MAC アドレスを入力してください。",
+        "data": {
+          "address": "Bluetooth MAC アドレス",
+          "model": "モデル名"
+        }
+      },
+      "auth": {
+        "title": "{device_name} の認証",
+        "description": "公式 Sesame アプリの合鍵情報を入力してください。以下の形式に対応しています：\n1. QRコードのフルURL (`ssm://UI?t=sk&sk=...`)\n2. QRコードから読み取った Base64 文字列\n3. 32桁の Hex シークレットキー",
+        "data": {
+          "secret_key": "シークレットキー / QRコード情報",
+          "history_tag": "履歴タグ (アプリの解錠履歴に表示される名前)"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Bluetooth経由でSesame 5に接続できませんでした。通信範囲内にあるか確認してください。",
+      "invalid_auth": "認証に失敗しました。シークレットキーまたはQRコードが正しいか確認してください。",
+      "invalid_key_format": "無効なキー形式です。有効なQRコードURLまたは16バイトキーを入力してください。",
+      "device_not_found": "選択されたデバイスが見つかりませんでした。"
+    },
+    "abort": {
+      "already_configured": "この Sesame はすでに設定されています。"
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Sesame 5 BLE オプション",
+        "data": {
+          "refresh_interval": "定期更新間隔（分、0 = オンデマンド接続のみ・省電力推奨）",
+          "history_tag": "履歴タグ (アプリの履歴に表示される名前)"
+        }
+      }
+    }
+  },
+  "entity": {
+    "sensor": {
+      "battery": {
+        "name": "バッテリー残量"
+      },
+      "voltage": {
+        "name": "バッテリー電圧"
+      },
+      "angle": {
+        "name": "サムターン角度"
+      }
+    },
+    "binary_sensor": {
+      "battery_critical": {
+        "name": "バッテリー低下"
+      },
+      "moving": {
+        "name": "モーター動作中"
+      }
+    }
+  }
+}

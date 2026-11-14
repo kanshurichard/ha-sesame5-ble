@@ -1,0 +1,85 @@
+"""Lock entity for Sesame 5 BLE integration."""
+
+from __future__ import annotations
+
+from typing import TYPE_CHECKING, Any
+
+from homeassistant.components.lock import LockEntity, LockEntityFeature
+from homeassistant.core import HomeAssistant
+from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from homeassistant.helpers.update_coordinator import CoordinatorEntity
+
+from .coordinator import Sesame5Coordinator
+from .helpers import get_device_info
+
+if TYPE_CHECKING:
+    from homeassistant.config_entries import ConfigEntry
+
+    Sesame5ConfigEntry = ConfigEntry[Sesame5Coordinator]
+else:
+    Sesame5ConfigEntry = Any
+
+
+async def async_setup_entry(
+    hass: HomeAssistant,
+    entry: Sesame5ConfigEntry,
+    async_add_entities: AddEntitiesCallback,
+) -> None:
+    coordinator = entry.runtime_data
+    async_add_entities([Sesame5BleLock(coordinator, entry)])
+
+
+class Sesame5BleLock(CoordinatorEntity[Sesame5Coordinator], LockEntity):
+    """Representation of a Sesame 5 smart lock."""
+
+    _attr_has_entity_name = True
+    _attr_name = None  # Primary device entity inherits device name
+    _attr_supported_features = LockEntityFeature.OPEN
+
+    def __init__(
+        self,
+        coordinator: Sesame5Coordinator,
+        entry: Sesame5ConfigEntry,
+    ) -> None:
+        super().__init__(coordinator)
+        self._attr_unique_id = f"{coordinator.address}_lock"
+        self._attr_device_info = get_device_info(coordinator, entry)
+
+    @property
+    def is_locked(self) -> bool | None:
+        data = self.coordinator.data
+        if not data or not data.mech_status:
+            return None
+        return data.mech_status.is_locked()
+
+    @property
+    def is_locking(self) -> bool:
+        data = self.coordinator.data
+        if not data or not data.mech_status or not data.mech_settings:
+            return False
+        return (
+            data.mech_status.target_position == data.mech_settings.lock_position
+            and not data.mech_status.is_in_lock_range
+        )
+
+    @property
+    def is_unlocking(self) -> bool:
+        data = self.coordinator.data
+        if not data or not data.mech_status or not data.mech_settings:
+            return False
+        return (
+            data.mech_status.target_position == data.mech_settings.unlock_position
+            and not data.mech_status.is_in_unlock_range
+        )
+
+    async def async_lock(self, **kwargs: Any) -> None:
+        """Lock the door."""
+        await self.coordinator.lock()
+
+    async def async_unlock(self, **kwargs: Any) -> None:
+        """Unlock the door."""
+        await self.coordinator.unlock()
+
+    async def async_open(self, **kwargs: Any) -> None:
+        """Open / unlatch the door (triggers unlock in Sesame)."""
+        await self.coordinator.unlock()
