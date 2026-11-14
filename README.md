@@ -1,7 +1,7 @@
 # Sesame 5 BLE for Home Assistant
 
 [![hacs_badge](https://img.shields.io/badge/HACS-Custom-41BDF5.svg?style=for-the-badge)](https://github.com/hacs/default)
-[![GitHub Release](https://img.shields.io/github/v/release/kan/ha-sesame5-ble?style=for-the-badge&color=blue)](https://github.com/kan/ha-sesame5-ble/releases)
+[![GitHub Release](https://img.shields.io/github/v/release/kan/ha-sesame5-ble?style=for-the-badge&color=blue)](https://github.com/kanshurichard/ha-sesame5-ble/releases)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=for-the-badge)](https://opensource.org/licenses/MIT)
 [![Home Assistant](https://img.shields.io/badge/Home%20Assistant-2024.1%2B-blue.svg?style=for-the-badge&logo=home-assistant)](https://www.home-assistant.io)
 
@@ -58,7 +58,7 @@ A modern, high-performance Home Assistant custom integration for direct, local B
 2. Click the top-right three dots menu `⋮` and select **Custom repositories**.
 3. Add repository URL:
    ```text
-   https://github.com/kan/ha-sesame5-ble
+   https://github.com/kanshurichard/ha-sesame5-ble
    ```
 4. Select category: **Integration**, and click **Add**.
 5. Search for **Sesame 5 BLE** and click **Download**.
@@ -66,7 +66,7 @@ A modern, high-performance Home Assistant custom integration for direct, local B
 
 ### Method 2: Manual Installation
 
-1. Download the latest release `.zip` from [Releases](https://github.com/kan/ha-sesame5-ble/releases).
+1. Download the latest release `.zip` from [Releases](https://github.com/kanshurichard/ha-sesame5-ble/releases).
 2. Extract and copy the `custom_components/sesame5_ble` folder into your Home Assistant `<config_dir>/custom_components/` directory:
    ```bash
    # Destination structure:

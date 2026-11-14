@@ -1,12 +1,12 @@
 {
   "domain": "sesame5_ble",
   "name": "Sesame 5 BLE",
-  "codeowners": ["@kan"],
+  "codeowners": ["@kanshurichard"],
   "config_flow": true,
   "dependencies": ["bluetooth_adapters"],
-  "documentation": "https://github.com/kan/ha-sesame5-ble",
+  "documentation": "https://github.com/kanshurichard/ha-sesame5-ble",
   "iot_class": "local_push",
-  "issue_tracker": "https://github.com/kan/ha-sesame5-ble/issues",
+  "issue_tracker": "https://github.com/kanshurichard/ha-sesame5-ble/issues",
   "requirements": [],
   "version": "1.0.0",
   "bluetooth": [

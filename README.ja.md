@@ -1,7 +1,7 @@
 # Sesame 5 BLE for Home Assistant (日本語)
 
 [![hacs_badge](https://img.shields.io/badge/HACS-Custom-41BDF5.svg?style=for-the-badge)](https://github.com/hacs/default)
-[![GitHub Release](https://img.shields.io/github/v/release/kan/ha-sesame5-ble?style=for-the-badge&color=blue)](https://github.com/kan/ha-sesame5-ble/releases)
+[![GitHub Release](https://img.shields.io/github/v/release/kan/ha-sesame5-ble?style=for-the-badge&color=blue)](https://github.com/kanshurichard/ha-sesame5-ble/releases)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=for-the-badge)](https://opensource.org/licenses/MIT)
 [![Home Assistant](https://img.shields.io/badge/Home%20Assistant-2024.1%2B-blue.svg?style=for-the-badge&logo=home-assistant)](https://www.home-assistant.io)
 
@@ -58,7 +58,7 @@
 2. 右上のメニュー `⋮` から **カスタムリポジトリ (Custom repositories)** を選択します。
 3. リポジトリ URL に以下を入力します：
    ```text
-   https://github.com/kan/ha-sesame5-ble
+   https://github.com/kanshurichard/ha-sesame5-ble
    ```
 4. カテゴリに **インテグレーション (Integration)** を選択し、**追加** をクリックします。
 5. HACS ストアで **Sesame 5 BLE** を検索してダウンロードします。
@@ -66,7 +66,7 @@
 
 ### 方法 2: 手動インストール
 
-1. [Releases ページ](https://github.com/kan/ha-sesame5-ble/releases) から最新の `.zip` ファイルをダウンロードします。
+1. [Releases ページ](https://github.com/kanshurichard/ha-sesame5-ble/releases) から最新の `.zip` ファイルをダウンロードします。
 2. 解凍後、`custom_components/sesame5_ble` フォルダを Home Assistant の `<config_dir>/custom_components/` に配置します：
    ```text
    <config_dir>/custom_components/sesame5_ble/

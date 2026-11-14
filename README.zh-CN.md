@@ -1,7 +1,7 @@
 # Sesame 5 BLE for Home Assistant (中文版)
 
 [![hacs_badge](https://img.shields.io/badge/HACS-Custom-41BDF5.svg?style=for-the-badge)](https://github.com/hacs/default)
-[![GitHub Release](https://img.shields.io/github/v/release/kan/ha-sesame5-ble?style=for-the-badge&color=blue)](https://github.com/kan/ha-sesame5-ble/releases)
+[![GitHub Release](https://img.shields.io/github/v/release/kan/ha-sesame5-ble?style=for-the-badge&color=blue)](https://github.com/kanshurichard/ha-sesame5-ble/releases)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=for-the-badge)](https://opensource.org/licenses/MIT)
 [![Home Assistant](https://img.shields.io/badge/Home%20Assistant-2024.1%2B-blue.svg?style=for-the-badge&logo=home-assistant)](https://www.home-assistant.io)
 
@@ -58,7 +58,7 @@
 2. 点击右上角菜单 `⋮`，选择 **自定义存储库（Custom repositories）**。
 3. 填入存储库地址：
    ```text
-   https://github.com/kan/ha-sesame5-ble
+   https://github.com/kanshurichard/ha-sesame5-ble
    ```
 4. 类别选择 **集成 (Integration)**，点击 **添加**。
 5. 在 HACS 列表中搜索 **Sesame 5 BLE**，点击下载并安装。
@@ -66,7 +66,7 @@
 
 ### 方式二：手动安装
 
-1. 从 [Releases 页面](https://github.com/kan/ha-sesame5-ble/releases) 下载最新的 `.zip` 发布包。
+1. 从 [Releases 页面](https://github.com/kanshurichard/ha-sesame5-ble/releases) 下载最新的 `.zip` 发布包。
 2. 解压后将 `custom_components/sesame5_ble` 文件夹复制到 Home Assistant 配置目录的 `custom_components/` 下：
    ```text
    <config_dir>/custom_components/sesame5_ble/
