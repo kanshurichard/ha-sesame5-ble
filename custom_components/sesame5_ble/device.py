@@ -134,11 +134,26 @@ class Sesame5Device:
             self._callbacks.remove(callback)
 
     def _notify_update(self) -> None:
-        for cb in self._callbacks:
+        def _dispatch() -> None:
+            for cb in list(self._callbacks):
+                try:
+                    cb()
+                except Exception:
+                    LOGGER.exception("Error in Sesame 5 update callback")
+
+        loop = getattr(self._hass, "loop", None)
+        if loop and isinstance(loop, asyncio.AbstractEventLoop) and loop.is_running():
             try:
-                cb()
-            except Exception:
-                LOGGER.exception("Error in Sesame 5 update callback")
+                running_loop = asyncio.get_running_loop()
+            except RuntimeError:
+                running_loop = None
+
+            if running_loop is loop:
+                _dispatch()
+            else:
+                loop.call_soon_threadsafe(_dispatch)
+        else:
+            _dispatch()
 
     async def connect(self) -> None:
         """Establish BLE connection and subscribe to notifications."""

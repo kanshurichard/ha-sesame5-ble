@@ -184,14 +184,32 @@ class Sesame5Coordinator(DataUpdateCoordinator[Sesame5State]):
         if self.is_realtime_mode and not self._device.is_connected and not self._is_shutting_down:
             self._trigger_reconnect()
 
+    def _safe_create_task(self, coro: Any) -> Any:
+        """Create async task safely on HA event loop from any thread."""
+        loop = getattr(self.hass, "loop", None)
+        try:
+            running_loop = asyncio.get_running_loop()
+        except RuntimeError:
+            running_loop = None
+
+        if loop and isinstance(loop, asyncio.AbstractEventLoop) and loop.is_running():
+            if running_loop is loop:
+                if hasattr(self.hass, "async_create_task"):
+                    return self.hass.async_create_task(coro)
+                return asyncio.create_task(coro)
+            return asyncio.run_coroutine_threadsafe(coro, loop)
+
+        if hasattr(self.hass, "async_create_task"):
+            return self.hass.async_create_task(coro)
+        return asyncio.create_task(coro)
+
     def _trigger_reconnect(self) -> None:
         """Schedule reconnection loop for persistent connection."""
         if self._is_shutting_down or not self.is_realtime_mode:
             return
         if self._reconnect_task and not self._reconnect_task.done():
             return
-        if hasattr(self.hass, "async_create_task"):
-            self._reconnect_task = self.hass.async_create_task(self._async_reconnect_loop())
+        self._reconnect_task = self._safe_create_task(self._async_reconnect_loop())
 
     async def _async_reconnect_loop(self) -> None:
         """Keep-alive reconnect loop with exponential backoff for persistent connection."""
@@ -223,13 +241,27 @@ class Sesame5Coordinator(DataUpdateCoordinator[Sesame5State]):
             self._idle_disconnect_unsub = None
             if not self.is_realtime_mode and self._device.is_connected:
                 LOGGER.debug("[%s] Power saving mode: disconnecting after %ds idle timeout", self.address, delay)
-                if hasattr(self.hass, "async_create_task"):
-                    self.hass.async_create_task(self._device.disconnect())
+                self._safe_create_task(self._device.disconnect())
 
+        def _schedule() -> None:
+            try:
+                self._idle_disconnect_unsub = async_call_later(self.hass, delay, _do_disconnect)
+            except Exception:
+                pass
+
+        loop = getattr(self.hass, "loop", None)
         try:
-            self._idle_disconnect_unsub = async_call_later(self.hass, delay, _do_disconnect)
-        except Exception:
-            pass
+            running_loop = asyncio.get_running_loop()
+        except RuntimeError:
+            running_loop = None
+
+        if loop and isinstance(loop, asyncio.AbstractEventLoop) and loop.is_running():
+            if running_loop is loop:
+                _schedule()
+            else:
+                loop.call_soon_threadsafe(_schedule)
+        else:
+            _schedule()
 
     def _on_history_broadcast(self, data: Any) -> None:
         """Handle history record broadcast from any lock in HA to detect password unlock."""
@@ -291,7 +323,7 @@ class Sesame5Coordinator(DataUpdateCoordinator[Sesame5State]):
 
         for code in to_delete:
             LOGGER.info("[%s] Auto-deleting one-time passcode '%s' after unlock", self.address, code)
-            self.hass.async_create_task(self.async_delete_passcode(code))
+            self._safe_create_task(self.async_delete_passcode(code))
 
     async def _ensure_connected(self) -> None:
         """Ensure active and authenticated BLE connection to lock."""
@@ -368,7 +400,7 @@ class Sesame5Coordinator(DataUpdateCoordinator[Sesame5State]):
                     passcode,
                     duration,
                 )
-                self.hass.async_create_task(self.async_delete_passcode(passcode))
+                self._safe_create_task(self.async_delete_passcode(passcode))
 
             unsub = async_call_later(self.hass, duration, _auto_delete_timer)
 
