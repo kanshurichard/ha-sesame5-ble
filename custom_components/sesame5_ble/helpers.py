@@ -280,6 +280,7 @@ class Sesame5HistoryRecord:
             HistoryType.DRIVE_UNLOCKED,
             HistoryType.WM2_UNLOCK,
             HistoryType.WEB_UNLOCK,
+            HistoryType.OPEN_SENSOR_OPEN,
         ):
             return "unlock"
         if self.history_type in (
@@ -289,6 +290,7 @@ class Sesame5HistoryRecord:
             HistoryType.DRIVE_LOCKED,
             HistoryType.WM2_LOCK,
             HistoryType.WEB_LOCK,
+            HistoryType.OPEN_SENSOR_CLOSE,
         ):
             return "lock"
         return "other"
@@ -298,7 +300,10 @@ class Sesame5HistoryRecord:
         """Return operation source: inside, outside, auto, remote, app."""
         if self.history_type in (HistoryType.MANUAL_LOCKED, HistoryType.MANUAL_UNLOCKED, HistoryType.MANUAL_ELSE):
             return "inside"
-        if self.history_type == HistoryType.AUTOLOCK:
+        if (
+            self.history_type in (HistoryType.AUTOLOCK, HistoryType.OPEN_SENSOR_OPEN, HistoryType.OPEN_SENSOR_CLOSE)
+            or self.history_tag_type == HistoryTagType.OPEN_SENSOR
+        ):
             return "auto"
         if self.history_tag_type in (
             HistoryTagType.FINGERPRINT,
@@ -336,6 +341,11 @@ class Sesame5HistoryRecord:
         if self.history_type == HistoryType.AUTOLOCK:
             return "自动上锁"
 
+        if self.history_type == HistoryType.OPEN_SENSOR_OPEN:
+            return "门磁联动开门"
+        if self.history_type == HistoryType.OPEN_SENSOR_CLOSE:
+            return "门磁联动关锁"
+
         if self.history_tag_type == HistoryTagType.FINGERPRINT:
             return "门外指纹解锁"
         if self.history_tag_type == HistoryTagType.PASSWORD:
@@ -351,7 +361,7 @@ class Sesame5HistoryRecord:
         if self.history_tag_type in (HistoryTagType.REMOTE, HistoryTagType.REMOTE_NANO):
             return "遥控器解锁" if self.action == "unlock" else "遥控器上锁"
         if self.history_tag_type == HistoryTagType.OPEN_SENSOR:
-            return "门磁联动开闭"
+            return "门磁联动开门" if self.action == "unlock" else "门磁联动关锁"
 
         if self.history_type == HistoryType.WM2_UNLOCK:
             return "Wi-Fi 网关远程解锁"

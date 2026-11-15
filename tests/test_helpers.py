@@ -195,6 +195,20 @@ class TestHelpers(unittest.TestCase):
         self.assertEqual(hist_ble.tag_name, "HA")
         self.assertEqual(hist_ble.description_zh, "蓝牙/App 解锁 (HA)")
 
+        # 7. Open Sensor open (type=90)
+        data_open_sensor = struct.pack("<BiBI7sBB16s", 0, 107, 90, 1731580000, b"\x00" * 7, 0, 7, b"\x33" * 16)
+        hist_os = Sesame5HistoryRecord(data_open_sensor)
+        self.assertEqual(hist_os.action, "unlock")
+        self.assertEqual(hist_os.source, "auto")
+        self.assertEqual(hist_os.description_zh, "门磁联动开门")
+
+        # 8. Open Sensor close (type=91)
+        data_os_close = struct.pack("<BiBI7sBB16s", 0, 108, 91, 1731580000, b"\x00" * 7, 0, 7, b"\x33" * 16)
+        hist_os_close = Sesame5HistoryRecord(data_os_close)
+        self.assertEqual(hist_os_close.action, "lock")
+        self.assertEqual(hist_os_close.source, "auto")
+        self.assertEqual(hist_os_close.description_zh, "门磁联动关锁")
+
 
 if __name__ == "__main__":
     unittest.main()

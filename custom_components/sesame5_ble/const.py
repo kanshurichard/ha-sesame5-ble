@@ -216,6 +216,8 @@ class HistoryType(Enum):
     WEB_UNLOCK = 17
     BLE_CLICK = 18
     DRIVE_CLICKED = 21
+    OPEN_SENSOR_OPEN = 90
+    OPEN_SENSOR_CLOSE = 91
 
 
 class HistoryTagType(Enum):

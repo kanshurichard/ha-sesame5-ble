@@ -333,20 +333,40 @@ class Sesame5Device:
 
         elif item_code == ItemCode.MECH_STATUS.value:
             try:
+                prev_locked = self._mech_status.is_locked() if self._mech_status else None
                 self._mech_status = Sesame5MechStatus(pub_data)
+                curr_locked = self._mech_status.is_locked()
                 LOGGER.debug(
                     "[%s] MECH_STATUS: locked=%s, pos=%d, target=%d, batt=%d%% (%.2fV)",
                     self._address,
-                    self._mech_status.is_locked(),
+                    curr_locked,
                     self._mech_status.position,
                     self._mech_status.target_position,
                     self._mech_status.battery_percentage,
                     self._mech_status.battery_voltage,
                 )
-                self._notify_update()
-                if self.is_ready and not self.is_keypad:
-                    # Request history when mechanical status changes on a lock
-                    asyncio.create_task(self.request_history())
+
+                is_lock_state_change = (
+                    prev_locked is not None
+                    and curr_locked is not None
+                    and prev_locked != curr_locked
+                )
+
+                if self.is_ready and not self.is_keypad and is_lock_state_change:
+                    # Defer notification until history is retrieved so HA automations
+                    # have accurate last_operation_* attributes at the exact moment state changes.
+                    async def _sync_history_and_notify() -> None:
+                        try:
+                            await asyncio.wait_for(self.request_history(), timeout=1.8)
+                        except Exception as err:
+                            LOGGER.debug("[%s] History sync timed out or failed: %s", self._address, err)
+                            self._notify_update()
+
+                    asyncio.create_task(_sync_history_and_notify())
+                else:
+                    self._notify_update()
+                    if self.is_ready and not self.is_keypad:
+                        asyncio.create_task(self.request_history())
             except Exception:
                 LOGGER.exception("[%s] Failed to parse MECH_STATUS", self._address)
 
