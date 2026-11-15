@@ -11,6 +11,7 @@ from homeassistant.components.binary_sensor import (
 from homeassistant.const import EntityCategory
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from homeassistant.helpers.restore_state import RestoreEntity
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import CONF_MODEL_ID, TOUCH_MODELS
@@ -40,8 +41,38 @@ async def async_setup_entry(
 
     if not is_keypad:
         entities.append(Sesame5MovingBinarySensor(coordinator, entry))
+        entities.append(Sesame5DoorBinarySensor(coordinator, entry))
 
     async_add_entities(entities)
+
+
+class Sesame5DoorBinarySensor(CoordinatorEntity[Sesame5Coordinator], RestoreEntity, BinarySensorEntity):
+    """Binary sensor indicating whether the door is open or closed (via paired Open Sensor)."""
+
+    _attr_has_entity_name = True
+    _attr_translation_key = "door"
+    _attr_device_class = BinarySensorDeviceClass.DOOR
+
+    def __init__(self, coordinator: Sesame5Coordinator, entry: Sesame5ConfigEntry) -> None:
+        super().__init__(coordinator)
+        self._attr_unique_id = f"{coordinator.address}_door"
+        self._attr_device_info = get_device_info(coordinator, entry)
+
+    @property
+    def is_on(self) -> bool | None:
+        data = self.coordinator.data
+        if not data:
+            return None
+        return data.door_open
+
+    async def async_added_to_hass(self) -> None:
+        """Restore previous door state after Home Assistant restart."""
+        await super().async_added_to_hass()
+        if self.coordinator.data and self.coordinator.data.door_open is None:
+            last_state = await self.async_get_last_state()
+            if last_state and last_state.state in ("on", "off"):
+                self.coordinator.device.set_door_open(last_state.state == "on")
+                self.coordinator.async_set_updated_data(self.coordinator._current_state)
 
 
 class Sesame5BatteryCriticalBinarySensor(CoordinatorEntity[Sesame5Coordinator], BinarySensorEntity):

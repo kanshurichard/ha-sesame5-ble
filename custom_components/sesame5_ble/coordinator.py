@@ -57,6 +57,7 @@ class Sesame5State:
     passcode_count: int = 0
     fingerprint_count: int = 0
     card_count: int = 0
+    door_open: bool | None = None
 
 
 class Sesame5Coordinator(DataUpdateCoordinator[Sesame5State]):
@@ -161,6 +162,7 @@ class Sesame5Coordinator(DataUpdateCoordinator[Sesame5State]):
             passcode_count=self._device.passcode_count,
             fingerprint_count=self._device.fingerprint_count,
             card_count=self._device.card_count,
+            door_open=self._device.door_open,
         )
 
     async def _async_update_data(self) -> Sesame5State:

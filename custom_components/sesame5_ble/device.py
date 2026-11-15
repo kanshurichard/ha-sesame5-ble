@@ -76,6 +76,7 @@ class Sesame5Device:
         self._mech_status: Sesame5MechStatus | None = None
         self._mech_settings: Sesame5MechSetting | None = None
         self._history: Sesame5HistoryRecord | None = None
+        self._door_open: bool | None = None
         self._passcodes: list[dict[str, Any]] = []
         self._fingerprints: list[dict[str, Any]] = []
         self._cards: list[dict[str, Any]] = []
@@ -148,6 +149,15 @@ class Sesame5Device:
     @property
     def card_count(self) -> int:
         return len(self._cards)
+
+    @property
+    def door_open(self) -> bool | None:
+        """Return True if door is currently open, False if closed, None if unknown."""
+        return self._door_open
+
+    def set_door_open(self, is_open: bool | None) -> None:
+        """Set current door open/closed status."""
+        self._door_open = is_open
 
     def add_update_callback(self, callback: Callable[[], None]) -> None:
         self._callbacks.append(callback)
@@ -463,6 +473,8 @@ class Sesame5Device:
                 try:
                     full_raw = bytes([result_code.value]) + resp_data
                     self._history = Sesame5HistoryRecord(full_raw)
+                    if self._history.door_open is not None:
+                        self._door_open = self._history.door_open
                     LOGGER.info(
                         "[%s] History update: %s (source=%s, tag=%s, time=%s)",
                         self._address,
@@ -539,6 +551,8 @@ class Sesame5Device:
             if result == ResultCode.SUCCESS and len(resp_data) >= 16:
                 full_raw = bytes([result.value]) + resp_data
                 self._history = Sesame5HistoryRecord(full_raw)
+                if self._history.door_open is not None:
+                    self._door_open = self._history.door_open
                 self._notify_update()
                 return self._history
         except Exception as err:

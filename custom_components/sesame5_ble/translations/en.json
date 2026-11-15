@@ -102,6 +102,9 @@
       },
       "moving": {
         "name": "Motor Active"
+      },
+      "door": {
+        "name": "Door"
       }
     }
   },

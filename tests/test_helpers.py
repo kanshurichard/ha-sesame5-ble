@@ -201,6 +201,7 @@ class TestHelpers(unittest.TestCase):
         self.assertEqual(hist_os.action, "unlock")
         self.assertEqual(hist_os.source, "auto")
         self.assertEqual(hist_os.description_zh, "门磁联动开门")
+        self.assertTrue(hist_os.door_open)
 
         # 8. Open Sensor close (type=91)
         data_os_close = struct.pack("<BiBI7sBB16s", 0, 108, 91, 1731580000, b"\x00" * 7, 0, 7, b"\x33" * 16)
@@ -208,6 +209,19 @@ class TestHelpers(unittest.TestCase):
         self.assertEqual(hist_os_close.action, "lock")
         self.assertEqual(hist_os_close.source, "auto")
         self.assertEqual(hist_os_close.description_zh, "门磁联动关锁")
+        self.assertFalse(hist_os_close.door_open)
+
+        # 9. Live Candy House Open Sensor close payload (5b ff)
+        live_os_close = bytes.fromhex("00540000000194b8f96abf0b4200d500540007112005090108080457005c00ffffffffc40ab90a5bff")
+        hist_live_close = Sesame5HistoryRecord(live_os_close)
+        self.assertEqual(hist_live_close.source, "auto")
+        self.assertFalse(hist_live_close.door_open)
+
+        # 10. Live Candy House Open Sensor open payload (5a ff)
+        live_os_open = bytes.fromhex("00540000000194b8f96abf0b4200d500540007112005090108080457005c00ffffffffc40ab90a5aff")
+        hist_live_open = Sesame5HistoryRecord(live_os_open)
+        self.assertEqual(hist_live_open.source, "auto")
+        self.assertTrue(hist_live_open.door_open)
 
 
 if __name__ == "__main__":

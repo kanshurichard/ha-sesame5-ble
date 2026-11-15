@@ -265,6 +265,26 @@ class Sesame5HistoryRecord:
             else HistoryType.NONE
         )
 
+        self.door_open: bool | None = None
+        if self.history_tag_type == HistoryTagType.OPEN_SENSOR or self.history_type in (
+            HistoryType.OPEN_SENSOR_OPEN,
+            HistoryType.OPEN_SENSOR_CLOSE,
+        ):
+            if self.history_type == HistoryType.OPEN_SENSOR_OPEN:
+                self.door_open = True
+            elif self.history_type == HistoryType.OPEN_SENSOR_CLOSE:
+                self.door_open = False
+            elif tag_data and len(tag_data) >= 2:
+                cmd = tag_data[-2]
+                if cmd == 0x5A:
+                    self.door_open = True
+                elif cmd == 0x5B:
+                    self.door_open = False
+                elif self.action == "unlock":
+                    self.door_open = True
+                elif self.action == "lock":
+                    self.door_open = False
+
     @property
     def iso_timestamp(self) -> str:
         if self.timestamp <= 0:
