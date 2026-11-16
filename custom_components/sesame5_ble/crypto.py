@@ -75,11 +75,17 @@ class OS3Cipher:
         self._encrypt_counter += 1
         return self._aesccm.encrypt(nonce=nonce, data=plaintext, associated_data=b"\x00")
 
-    def decrypt(self, ciphertext: bytes) -> bytes:
+    def decrypt(self, ciphertext: bytes, window: int = 5) -> bytes:
         """Decrypt ciphertext and verify the 4-byte MAC using AES-CCM.
+
+        Only advances decrypt counter upon successful decryption. If the current
+        counter fails, probes a small forward window (up to `window` positions) to
+        seamlessly recover from dropped BLE packets. If verification still fails,
+        the decrypt counter is left unchanged so future valid packets can still succeed.
 
         Args:
             ciphertext: Encrypted bytes including trailing 4-byte MAC tag.
+            window: Maximum number of dropped packets to probe ahead.
 
         Returns:
             Decrypted plaintext bytes.
@@ -90,6 +96,34 @@ class OS3Cipher:
         if self._decrypt_counter >= self._MAX_COUNTER:
             raise OverflowError("Decryption counter overflow")
 
+        # 1. Try current expected counter
         nonce = self._generate_nonce(self._decrypt_counter)
-        self._decrypt_counter += 1
-        return self._aesccm.decrypt(nonce=nonce, data=ciphertext, associated_data=b"\x00")
+        try:
+            plaintext = self._aesccm.decrypt(nonce=nonce, data=ciphertext, associated_data=b"\x00")
+            self._decrypt_counter += 1
+            return plaintext
+        except Exception:
+            pass
+
+        # 2. Probe forward window in case 1..window packets were dropped over BLE
+        for skip in range(1, window + 1):
+            candidate = self._decrypt_counter + skip
+            if candidate >= self._MAX_COUNTER:
+                break
+            nonce = self._generate_nonce(candidate)
+            try:
+                plaintext = self._aesccm.decrypt(nonce=nonce, data=ciphertext, associated_data=b"\x00")
+                LOGGER.warning(
+                    "Recovered from %d dropped BLE packet(s) (decrypt counter resynced: %d -> %d)",
+                    skip,
+                    self._decrypt_counter,
+                    candidate + 1,
+                )
+                self._decrypt_counter = candidate + 1
+                return plaintext
+            except Exception:
+                continue
+
+        # 3. None matched: raise InvalidTag without advancing the counter
+        from cryptography.exceptions import InvalidTag
+        raise InvalidTag("Failed to decrypt notification; MAC verification failed")

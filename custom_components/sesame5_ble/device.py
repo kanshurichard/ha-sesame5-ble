@@ -84,6 +84,10 @@ class Sesame5Device:
         self._state = STATE_DISCONNECTED
         self._callbacks: list[Callable[[], None]] = []
         self._lock = asyncio.Lock()
+        self._connect_lock = asyncio.Lock()
+        self._is_notifying = False
+        self._decrypt_failure_count = 0
+        self._history_in_progress = False
 
         self._initial_token_received = asyncio.Event()
         self._logged_in = asyncio.Event()
@@ -190,49 +194,56 @@ class Sesame5Device:
 
     async def connect(self) -> None:
         """Establish BLE connection and subscribe to notifications."""
-        self._state = STATE_CONNECTING
-        self._initial_token_received.clear()
-        self._logged_in.clear()
-        self._session_token = None
-        self._cipher = None
-        self._rx_buffer = BleFrameReceiver()
+        async with self._connect_lock:
+            if self.is_connected and self._session_token is not None:
+                return
 
-        LOGGER.debug("[%s] Connecting to Sesame 5 BLE", self._address)
-        ble_device = async_ble_device_from_address(self._hass, self._address, connectable=True)
+            self._state = STATE_CONNECTING
+            self._initial_token_received.clear()
+            self._logged_in.clear()
+            self._session_token = None
+            self._cipher = None
+            self._rx_buffer = BleFrameReceiver()
+            self._decrypt_failure_count = 0
 
-        self._client = await establish_connection(
-            BleakClient,
-            ble_device or self._address,
-            self._address,
-            disconnected_callback=self._on_disconnect,
-            max_attempts=3,
-        )
+            LOGGER.debug("[%s] Connecting to Sesame 5 BLE", self._address)
+            ble_device = async_ble_device_from_address(self._hass, self._address, connectable=True)
 
-        LOGGER.debug("[%s] Connected to GATT server, discovering services", self._address)
-        for service in self._client.services:
-            if service.uuid.lower() == SERVICE_UUID.lower():
-                self._tx_char = service.get_characteristic(TX_UUID)
-                rx_char = service.get_characteristic(RX_UUID)
-                if not self._tx_char or not rx_char:
-                    raise RuntimeError("Missing Sesame TX/RX characteristic")
-
-                await self._client.start_notify(rx_char, self._on_notify)
-                LOGGER.debug("[%s] Subscribed to RX characteristic", self._address)
-                break
-        else:
-            raise RuntimeError(f"Sesame service {SERVICE_UUID} not found on device")
-
-        # Wait for the lock to publish its 4-byte session token
-        LOGGER.debug("[%s] Waiting for INITIAL session token from device", self._address)
-        try:
-            await asyncio.wait_for(
-                self._initial_token_received.wait(),
-                timeout=INITIAL_TOKEN_TIMEOUT,
+            self._client = await establish_connection(
+                BleakClient,
+                ble_device or self._address,
+                self._address,
+                disconnected_callback=self._on_disconnect,
+                max_attempts=3,
             )
-        except asyncio.TimeoutError as err:
-            LOGGER.error("[%s] Timed out waiting for INITIAL token", self._address)
-            await self.disconnect()
-            raise TimeoutError("Sesame 5 INITIAL session token timeout") from err
+
+            LOGGER.debug("[%s] Connected to GATT server, discovering services", self._address)
+            for service in self._client.services:
+                if service.uuid.lower() == SERVICE_UUID.lower():
+                    self._tx_char = service.get_characteristic(TX_UUID)
+                    rx_char = service.get_characteristic(RX_UUID)
+                    if not self._tx_char or not rx_char:
+                        raise RuntimeError("Missing Sesame TX/RX characteristic")
+
+                    if not self._is_notifying:
+                        await self._client.start_notify(rx_char, self._on_notify)
+                        self._is_notifying = True
+                        LOGGER.debug("[%s] Subscribed to RX characteristic", self._address)
+                    break
+            else:
+                raise RuntimeError(f"Sesame service {SERVICE_UUID} not found on device")
+
+            # Wait for the lock to publish its 4-byte session token
+            LOGGER.debug("[%s] Waiting for INITIAL session token from device", self._address)
+            try:
+                await asyncio.wait_for(
+                    self._initial_token_received.wait(),
+                    timeout=INITIAL_TOKEN_TIMEOUT,
+                )
+            except asyncio.TimeoutError as err:
+                LOGGER.error("[%s] Timed out waiting for INITIAL token", self._address)
+                await self.disconnect()
+                raise TimeoutError("Sesame 5 INITIAL session token timeout") from err
 
     def _on_disconnect(self, client: BleakClient) -> None:
         LOGGER.debug("[%s] BLE transport disconnected", self._address)
@@ -241,7 +252,11 @@ class Sesame5Device:
         self._initial_token_received.clear()
         self._cipher = None
         self._session_token = None
+        self._is_notifying = False
+        self._client = None
         self._rx_buffer = BleFrameReceiver()
+        self._decrypt_failure_count = 0
+        self._history_in_progress = False
 
         # Cancel any pending command futures
         for fut in self._command_response_futures.values():
@@ -310,8 +325,23 @@ class Sesame5Device:
                 return
             try:
                 raw = self._cipher.decrypt(raw)
-            except Exception:
-                LOGGER.exception("[%s] Failed to decrypt received notification", self._address)
+                self._decrypt_failure_count = 0
+            except Exception as err:
+                self._decrypt_failure_count += 1
+                LOGGER.error(
+                    "[%s] Decryption failed (consecutive=%d, cnt=%d): %s",
+                    self._address,
+                    self._decrypt_failure_count,
+                    self._cipher._decrypt_counter,
+                    err,
+                )
+                if self._decrypt_failure_count >= 2:
+                    LOGGER.warning(
+                        "[%s] Multiple consecutive decrypt failures; resetting session to force fresh handshake",
+                        self._address,
+                    )
+                    self._decrypt_failure_count = 0
+                    asyncio.create_task(self.disconnect())
                 return
 
         if len(raw) < 2:
@@ -545,6 +575,9 @@ class Sesame5Device:
         """Fetch latest operation history record from the lock."""
         if not self.is_ready:
             return None
+        if self._history_in_progress:
+            return None
+        self._history_in_progress = True
         try:
             LOGGER.debug("[%s] Requesting latest history record from lock", self._address)
             result, resp_data = await self.send_command(ItemCode.HISTORY, b"\x00", is_encrypted=True)
@@ -557,6 +590,8 @@ class Sesame5Device:
                 return self._history
         except Exception as err:
             LOGGER.debug("[%s] Failed to fetch history record (non-fatal): %s", self._address, err)
+        finally:
+            self._history_in_progress = False
         return None
 
     async def add_passcode(self, passcode: str, name: str = "HA") -> None:
@@ -661,10 +696,12 @@ class Sesame5Device:
     async def disconnect(self) -> None:
         """Disconnect GATT client gracefully."""
         if self._client and self._client.is_connected:
-            try:
-                await self._client.stop_notify(RX_UUID)
-            except Exception:
-                pass
+            if self._is_notifying:
+                try:
+                    await self._client.stop_notify(RX_UUID)
+                except Exception:
+                    pass
+                self._is_notifying = False
             try:
                 await self._client.disconnect()
             except Exception:
@@ -675,4 +712,9 @@ class Sesame5Device:
         self._initial_token_received.clear()
         self._cipher = None
         self._session_token = None
+        self._is_notifying = False
+        self._client = None
+        self._rx_buffer = BleFrameReceiver()
+        self._decrypt_failure_count = 0
+        self._history_in_progress = False
         LOGGER.debug("[%s] Disconnected cleanly", self._address)

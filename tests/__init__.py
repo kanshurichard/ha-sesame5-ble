@@ -3,6 +3,27 @@
 import sys
 from unittest.mock import MagicMock
 
+# Try importing real cryptography if available, otherwise mock
+try:
+    import cryptography
+    import cryptography.exceptions
+    import cryptography.hazmat.primitives.ciphers.aead
+    import cryptography.hazmat.primitives.cmac
+    import cryptography.hazmat.primitives.ciphers.algorithms
+except ImportError:
+    for mod in [
+        "cryptography",
+        "cryptography.exceptions",
+        "cryptography.hazmat",
+        "cryptography.hazmat.primitives",
+        "cryptography.hazmat.primitives.cmac",
+        "cryptography.hazmat.primitives.ciphers",
+        "cryptography.hazmat.primitives.ciphers.algorithms",
+        "cryptography.hazmat.primitives.ciphers.aead",
+    ]:
+        if mod not in sys.modules:
+            sys.modules[mod] = MagicMock()
+
 for mod in [
     "homeassistant",
     "homeassistant.const",
@@ -29,13 +50,6 @@ for mod in [
     "bleak.backends.device",
     "bleak.backends.characteristic",
     "bleak_retry_connector",
-    "cryptography",
-    "cryptography.hazmat",
-    "cryptography.hazmat.primitives",
-    "cryptography.hazmat.primitives.cmac",
-    "cryptography.hazmat.primitives.ciphers",
-    "cryptography.hazmat.primitives.ciphers.algorithms",
-    "cryptography.hazmat.primitives.ciphers.aead",
 ]:
     if mod not in sys.modules:
         sys.modules[mod] = MagicMock()
