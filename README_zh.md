@@ -46,7 +46,7 @@
 
 1. 进入 Home Assistant 的 **HACS** 界面。
 2. 点击右上角菜单 **⋮** → **自定义存储库 (Custom repositories)**。
-3. 添加存储库地址：`https://github.com/kan/ha-sesame5-ble`（或你 Fork 的仓库地址），类别选择 **Integration（集成）**。
+3. 添加存储库地址：`https://github.com/kanshurichard/ha-sesame5-ble`（或你 Fork 的仓库地址），类别选择 **Integration（集成）**。
 4. 搜索 **Sesame 5 BLE**，点击下载安装后重启 Home Assistant。
 
 ### 方式 2：手动拷贝安装

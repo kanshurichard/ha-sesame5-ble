@@ -1,7 +1,7 @@
 # Sesame 5 BLE for Home Assistant (中文版)
 
 [![hacs_badge](https://img.shields.io/badge/HACS-Custom-41BDF5.svg?style=for-the-badge)](https://github.com/hacs/default)
-[![GitHub Release](https://img.shields.io/github/v/release/kan/ha-sesame5-ble?style=for-the-badge&color=blue)](https://github.com/kanshurichard/ha-sesame5-ble/releases)
+[![GitHub Release](https://img.shields.io/github/v/release/kanshurichard/ha-sesame5-ble?style=for-the-badge&color=blue)](https://github.com/kanshurichard/ha-sesame5-ble/releases)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=for-the-badge)](https://opensource.org/licenses/MIT)
 [![Home Assistant](https://img.shields.io/badge/Home%20Assistant-2024.1%2B-blue.svg?style=for-the-badge&logo=home-assistant)](https://www.home-assistant.io)
 

@@ -330,7 +330,13 @@ class Sesame5Coordinator(DataUpdateCoordinator[Sesame5State]):
                     break
 
         for code in to_delete:
-            LOGGER.info("[%s] Auto-deleting one-time passcode '%s' after unlock", self.address, code)
+            entry = self._temp_passcodes.get(code, {})
+            code_name = entry.get("name", "unknown")
+            LOGGER.info(
+                "[%s] Auto-deleting one-time passcode '%s' after unlock",
+                self.address,
+                code_name,
+            )
             self._safe_create_task(self.async_delete_passcode(code))
 
     async def _ensure_connected(self) -> None:
@@ -405,7 +411,7 @@ class Sesame5Coordinator(DataUpdateCoordinator[Sesame5State]):
                 LOGGER.info(
                     "[%s] Temporary passcode '%s' expired (%ds), auto-deleting",
                     self.address,
-                    passcode,
+                    name,
                     duration,
                 )
                 self._safe_create_task(self.async_delete_passcode(passcode))
@@ -419,9 +425,8 @@ class Sesame5Coordinator(DataUpdateCoordinator[Sesame5State]):
             "unsub": unsub,
         }
         LOGGER.info(
-            "[%s] Passcode '%s' registered (name='%s', duration=%s, one_time=%s)",
+            "[%s] Passcode registered (name='%s', duration=%s, one_time=%s)",
             self.address,
-            passcode,
             name,
             duration,
             one_time,

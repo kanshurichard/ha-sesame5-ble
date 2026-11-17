@@ -597,20 +597,20 @@ class Sesame5Device:
     async def add_passcode(self, passcode: str, name: str = "HA") -> None:
         """Add a passcode to the keypad."""
         payload = format_passcode_add_payload(passcode, name)
-        LOGGER.info("[%s] Adding passcode '%s' (name: %s)", self._address, passcode, name)
+        LOGGER.info("[%s] Adding passcode (name: %s, len: %d)", self._address, name, len(passcode))
         result, _ = await self.send_command(ItemCode.SSM_OS3_PASSCODE_ADD, payload, is_encrypted=True)
         if result != ResultCode.SUCCESS:
             raise RuntimeError(f"Add passcode failed with result: {result.name}")
-        LOGGER.info("[%s] Passcode '%s' added successfully", self._address, passcode)
+        LOGGER.info("[%s] Passcode added successfully (name: %s)", self._address, name)
 
     async def delete_passcode(self, passcode: str) -> None:
         """Delete a passcode from the keypad."""
         payload = format_passcode_delete_payload(passcode)
-        LOGGER.info("[%s] Deleting passcode '%s'", self._address, passcode)
+        LOGGER.info("[%s] Deleting passcode (len: %d)", self._address, len(passcode))
         result, _ = await self.send_command(ItemCode.SSM_OS3_PASSCODE_DELETE, payload, is_encrypted=True)
         if result != ResultCode.SUCCESS:
             raise RuntimeError(f"Delete passcode failed with result: {result.name}")
-        LOGGER.info("[%s] Passcode '%s' deleted successfully", self._address, passcode)
+        LOGGER.info("[%s] Passcode deleted successfully", self._address)
 
     async def request_passcodes(self, timeout: float = 4.0) -> list[dict[str, Any]]:
         """Request and return the list of passcodes registered on the device."""
