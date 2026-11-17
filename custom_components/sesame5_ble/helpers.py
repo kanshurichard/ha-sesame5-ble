@@ -274,15 +274,18 @@ class Sesame5HistoryRecord:
                 self.door_open = True
             elif self.history_type == HistoryType.OPEN_SENSOR_CLOSE:
                 self.door_open = False
+            elif tag_data and len(tag_data) >= 23:
+                # 24-byte tag layout for Open Sensor: [0, 7, 16B UUID, 2B volt1, 2B volt2, 1B cmd (0x5A/0x5B), 1B 0xff]
+                cmd = tag_data[22]
+                if cmd == 0x5A:
+                    self.door_open = True
+                elif cmd == 0x5B:
+                    self.door_open = False
             elif tag_data and len(tag_data) >= 2:
                 cmd = tag_data[-2]
                 if cmd == 0x5A:
                     self.door_open = True
                 elif cmd == 0x5B:
-                    self.door_open = False
-                elif self.action == "unlock":
-                    self.door_open = True
-                elif self.action == "lock":
                     self.door_open = False
 
     @property
@@ -294,13 +297,17 @@ class Sesame5HistoryRecord:
     @property
     def action(self) -> str:
         """Return 'lock', 'unlock', or 'other'."""
+        if self.history_tag_type == HistoryTagType.OPEN_SENSOR:
+            # Door contact events are not unlock actions. Only closing the door that drives motor lock is 'lock'.
+            if self.door_open is False:
+                return "lock"
+            return "other"
         if self.history_type in (
             HistoryType.BLE_UNLOCK,
             HistoryType.MANUAL_UNLOCKED,
             HistoryType.DRIVE_UNLOCKED,
             HistoryType.WM2_UNLOCK,
             HistoryType.WEB_UNLOCK,
-            HistoryType.OPEN_SENSOR_OPEN,
         ):
             return "unlock"
         if self.history_type in (
@@ -314,6 +321,23 @@ class Sesame5HistoryRecord:
         ):
             return "lock"
         return "other"
+
+    @property
+    def is_lock_operation(self) -> bool:
+        """Return True if this record represents an actual lock or unlock operation."""
+        if self.history_tag_type == HistoryTagType.OPEN_SENSOR:
+            # Only door-close auto-lock is an actual lock operation; door open is purely contact sensor
+            return self.action == "lock"
+        if self.history_type in (
+            HistoryType.OPEN_SENSOR_OPEN,
+            HistoryType.TIME_CHANGED,
+            HistoryType.AUTOLOCK_UPDATED,
+            HistoryType.MECH_SETTING_UPDATED,
+            HistoryType.BLE_ADV_PARAM_UPDATED,
+            HistoryType.NONE,
+        ):
+            return False
+        return True
 
     @property
     def source(self) -> str:
@@ -362,9 +386,9 @@ class Sesame5HistoryRecord:
             return "自动上锁"
 
         if self.history_type == HistoryType.OPEN_SENSOR_OPEN:
-            return "门磁联动开门"
+            return "门磁感应门开"
         if self.history_type == HistoryType.OPEN_SENSOR_CLOSE:
-            return "门磁联动关锁"
+            return "关门自动上锁"
 
         if self.history_tag_type == HistoryTagType.FINGERPRINT:
             return "门外指纹解锁"
@@ -381,7 +405,7 @@ class Sesame5HistoryRecord:
         if self.history_tag_type in (HistoryTagType.REMOTE, HistoryTagType.REMOTE_NANO):
             return "遥控器解锁" if self.action == "unlock" else "遥控器上锁"
         if self.history_tag_type == HistoryTagType.OPEN_SENSOR:
-            return "门磁联动开门" if self.action == "unlock" else "门磁联动关锁"
+            return "关门自动上锁" if self.action == "lock" else "门磁感应门开"
 
         if self.history_type == HistoryType.WM2_UNLOCK:
             return "Wi-Fi 网关远程解锁"

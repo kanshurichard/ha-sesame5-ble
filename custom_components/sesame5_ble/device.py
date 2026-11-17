@@ -77,6 +77,7 @@ class Sesame5Device:
         self._mech_settings: Sesame5MechSetting | None = None
         self._history: Sesame5HistoryRecord | None = None
         self._door_open: bool | None = None
+        self._last_known_locked: bool | None = None
         self._passcodes: list[dict[str, Any]] = []
         self._fingerprints: list[dict[str, Any]] = []
         self._cards: list[dict[str, Any]] = []
@@ -373,7 +374,6 @@ class Sesame5Device:
 
         elif item_code == ItemCode.MECH_STATUS.value:
             try:
-                prev_locked = self._mech_status.is_locked() if self._mech_status else None
                 self._mech_status = Sesame5MechStatus(pub_data)
                 curr_locked = self._mech_status.is_locked()
                 LOGGER.debug(
@@ -386,11 +386,16 @@ class Sesame5Device:
                     self._mech_status.battery_voltage,
                 )
 
+                # Determine if a definitive lock state transition occurred (e.g. True -> False or False -> True),
+                # tracking past intermediate indeterminate moving states (None).
+                prev_locked = self._last_known_locked
                 is_lock_state_change = (
                     prev_locked is not None
                     and curr_locked is not None
                     and prev_locked != curr_locked
                 )
+                if curr_locked is not None:
+                    self._last_known_locked = curr_locked
 
                 if self.is_ready and not self.is_keypad and is_lock_state_change:
                     # Defer notification until history is retrieved so HA automations
@@ -400,6 +405,7 @@ class Sesame5Device:
                             await asyncio.wait_for(self.request_history(), timeout=1.8)
                         except Exception as err:
                             LOGGER.debug("[%s] History sync timed out or failed: %s", self._address, err)
+                        finally:
                             self._notify_update()
 
                     asyncio.create_task(_sync_history_and_notify())
@@ -573,9 +579,7 @@ class Sesame5Device:
 
     async def request_history(self) -> Sesame5HistoryRecord | None:
         """Fetch latest operation history record from the lock."""
-        if not self.is_ready:
-            return None
-        if self._history_in_progress:
+        if not self.is_ready or self._history_in_progress:
             return None
         self._history_in_progress = True
         try:
@@ -583,11 +587,32 @@ class Sesame5Device:
             result, resp_data = await self.send_command(ItemCode.HISTORY, b"\x00", is_encrypted=True)
             if result == ResultCode.SUCCESS and len(resp_data) >= 16:
                 full_raw = bytes([result.value]) + resp_data
-                self._history = Sesame5HistoryRecord(full_raw)
-                if self._history.door_open is not None:
-                    self._door_open = self._history.door_open
+                record = Sesame5HistoryRecord(full_raw)
+
+                # 1. Update door sensor status if open sensor data is present
+                if record.door_open is not None:
+                    self._door_open = record.door_open
+
+                # 2. Only update lock operation history if it is a genuine lock/unlock operation
+                if record.is_lock_operation:
+                    self._history = record
+                    LOGGER.info(
+                        "[%s] Lock operation update: %s (source=%s, tag=%s, time=%s)",
+                        self._address,
+                        self._history.description_zh,
+                        self._history.source,
+                        self._history.history_tag_type.name if self._history.history_tag_type else "NONE",
+                        self._history.iso_timestamp,
+                    )
+                else:
+                    LOGGER.debug(
+                        "[%s] Non-lock event ignored for last_operation: %s (door_open=%s)",
+                        self._address,
+                        record.description_zh,
+                        record.door_open,
+                    )
                 self._notify_update()
-                return self._history
+                return record
         except Exception as err:
             LOGGER.debug("[%s] Failed to fetch history record (non-fatal): %s", self._address, err)
         finally:
@@ -717,4 +742,5 @@ class Sesame5Device:
         self._rx_buffer = BleFrameReceiver()
         self._decrypt_failure_count = 0
         self._history_in_progress = False
+        self._last_known_locked = None
         LOGGER.debug("[%s] Disconnected cleanly", self._address)

@@ -61,6 +61,65 @@ class TestSesame5Device(unittest.IsolatedAsyncioTestCase):
         await self.device._handle_response(ItemCode.LOGIN.value, ResultCode.INVALID_SIG.value, b"")
         self.assertFalse(self.device._logged_in.is_set())
 
+    async def test_lock_state_change_tracking_across_moving_state(self):
+        import struct
+        from custom_components.sesame5_ble.device import STATE_READY
+
+        self.device._client = MagicMock(is_connected=True)
+        self.device._state = STATE_READY
+
+        # 1. Start locked (pos 66, IS_STOP | IS_IN_LOCK_RANGE = 0x12)
+        locked_payload = struct.pack("<HhhB", 3000, 0, 66, 0x12)
+        await self.device._handle_publish(ItemCode.MECH_STATUS.value, locked_payload)
+        self.assertTrue(self.device.mech_status.is_locked())
+        self.assertTrue(self.device._last_known_locked)
+
+        # 2. Motor starts moving (pos 140, indeterminate None, IS_CLOCKWISE = 0x40)
+        moving_payload = struct.pack("<HhhB", 3000, 0, 140, 0x40)
+        await self.device._handle_publish(ItemCode.MECH_STATUS.value, moving_payload)
+        self.assertIsNone(self.device.mech_status.is_locked())
+        # _last_known_locked must persist as True so state transition is preserved
+        self.assertTrue(self.device._last_known_locked)
+
+        # 3. Motor reaches unlocked (pos 216, IS_STOP | IS_IN_UNLOCK_RANGE = 0x14)
+        with patch.object(self.device, "request_history", new_callable=AsyncMock) as mock_hist:
+            mock_hist.return_value = None
+            unlocked_payload = struct.pack("<HhhB", 3000, 0, 216, 0x14)
+            await self.device._handle_publish(ItemCode.MECH_STATUS.value, unlocked_payload)
+            self.assertFalse(self.device.mech_status.is_locked())
+            self.assertFalse(self.device._last_known_locked)
+            # Give background task event loop a turn
+            await asyncio.sleep(0.01)
+            # request_history must be called to sync history before HA automation fires
+            mock_hist.assert_called_once()
+
+    async def test_open_sensor_door_open_preserves_unlock_history(self):
+        import struct
+        from custom_components.sesame5_ble.device import STATE_READY
+        from custom_components.sesame5_ble.helpers import Sesame5HistoryRecord
+
+        self.device._client = MagicMock(is_connected=True)
+        self.device._state = STATE_READY
+
+        # Simulate existing fingerprint unlock history
+        fp_payload = struct.pack("<BiBI7sBB16s", 0, 109, 2, 1731580000, b"\x00" * 7, 0, 1, b"\x11" * 16)
+        self.device._history = Sesame5HistoryRecord(fp_payload)
+        self.assertEqual(self.device._history.description_zh, "门外指纹解锁")
+
+        # Now simulate receiving an Open Sensor door-opening event
+        os_open_payload = bytes.fromhex("00540000000194b8f96abf0b4200d500540007112005090108080457005c00ffffffffc40ab90a5aff")
+
+        with patch.object(self.device, "send_command", new_callable=AsyncMock) as mock_cmd:
+            mock_cmd.return_value = (ResultCode.SUCCESS, os_open_payload[1:])
+            record = await self.device.request_history()
+
+            self.assertIsNotNone(record)
+            # Door sensor must update door state to open
+            self.assertTrue(self.device.door_open)
+            # BUT _history must NOT be overwritten by door-opening event!
+            self.assertEqual(self.device.history.description_zh, "门外指纹解锁")
+            self.assertEqual(self.device.history.source, "outside")
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -1,6 +1,6 @@
 add_passcode:
   name: Add Passcode
-  description: Add a passcode to a Sesame Touch / Keypad device (Touch 1/2 series). Supports temporary passcodes with an expiry duration and one-time passcodes. WARNING: Both temporary expiry and one-time deletion are managed by Home Assistant via BLE. If the keypad is unreachable when the timer expires or when the door unlocks, deletion will fail. Also note that one-time passcodes auto-delete upon ANY keypad password unlock on the linked lock, because the lock protocol does not distinguish which passcode was entered.
+  description: "Add a passcode to a Sesame Touch / Keypad device (Touch 1/2 series). Supports temporary passcodes with an expiry duration and one-time passcodes. WARNING: Both temporary expiry and one-time deletion are managed by Home Assistant via BLE. If the keypad is unreachable when the timer expires or when the door unlocks, deletion will fail. Also note that one-time passcodes auto-delete upon ANY keypad password unlock on the linked lock, because the lock protocol does not distinguish which passcode was entered."
   fields:
     device_id:
       name: Device
@@ -34,7 +34,7 @@ add_passcode:
         text:
     duration:
       name: Duration (Seconds)
-      description: Validity duration in seconds. Home Assistant automatically deletes this passcode when the timer expires. WARNING: The keypad must be reachable via Bluetooth at expiration time to complete deletion; otherwise, the passcode will remain until manually deleted. Leave empty for permanent.
+      description: "Validity duration in seconds. Home Assistant automatically deletes this passcode when the timer expires. WARNING: The keypad must be reachable via Bluetooth at expiration time to complete deletion; otherwise, the passcode will remain until manually deleted. Leave empty for permanent."
       required: false
       example: 3600
       selector:
@@ -45,7 +45,7 @@ add_passcode:
           mode: box
     one_time:
       name: Auto-delete After One Use
-      description: Automatically delete passcode after unlock. WARNING: Requires active Bluetooth connection between HA and keypad to complete deletion. Also note that ANY keypad password unlock on the linked lock triggers this deletion, because the lock hardware protocol does not distinguish which passcode PIN was entered.
+      description: "Automatically delete passcode after unlock. WARNING: Requires active Bluetooth connection between HA and keypad to complete deletion. Also note that ANY keypad password unlock on the linked lock triggers this deletion, because the lock hardware protocol does not distinguish which passcode PIN was entered."
       required: false
       default: false
       selector:
