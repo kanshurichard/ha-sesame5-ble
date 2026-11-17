@@ -111,7 +111,7 @@
   "services": {
     "add_passcode": {
       "name": "Add Passcode",
-      "description": "Add a passcode to a Sesame Touch / Keypad device, supporting temporary passcodes with an expiry duration and one-time passcodes that auto-delete after first unlock.",
+      "description": "Add a passcode to a Sesame Touch / Keypad device (Touch 1/2 series). Supports temporary passcodes with an expiry duration and one-time passcodes. WARNING: Temporary expiry and one-time deletion are managed by Home Assistant via BLE. If the keypad is unreachable when the timer expires or when the door unlocks, deletion will fail. Also note that one-time passcodes auto-delete upon ANY keypad password unlock on the linked lock.",
       "fields": {
         "device_id": {
           "name": "Device",
@@ -131,11 +131,11 @@
         },
         "duration": {
           "name": "Duration (Seconds)",
-          "description": "Validity duration in seconds. The system will automatically remove this passcode after expiration. Leave empty for permanent."
+          "description": "Validity duration in seconds. Home Assistant automatically deletes this passcode when the timer expires. WARNING: Keypad must be in active Bluetooth range at expiration time to complete deletion; otherwise, the passcode will remain until manually deleted. Leave empty for permanent."
         },
         "one_time": {
           "name": "Auto-delete After One Use",
-          "description": "When enabled, this passcode will be automatically deleted after first successful unlock."
+          "description": "Automatically delete passcode after first unlock. WARNING: Requires active Bluetooth connection between HA and keypad. Also note that ANY keypad password unlock on the linked lock triggers this deletion, because the lock protocol does not distinguish which passcode was entered."
         }
       }
     },

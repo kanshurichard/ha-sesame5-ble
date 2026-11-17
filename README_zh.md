@@ -33,10 +33,11 @@
 | **5** | **SESAME 5** | SesameOS 3 |
 | **7** | **SESAME 5 Pro** | SesameOS 3 |
 | **16** | **SESAME 5 US** | SesameOS 3 |
-| **6** | **SESAME Bike 2** | SesameOS 3 |
-| **17** | **SESAME Bot 2** | SesameOS 3 |
+| **6 / 33** | **SESAME Bike 2 / 3** | SesameOS 3 |
+| **17 / 35** | **SESAME Bot 2 / 3** | SesameOS 3 |
 | **20 / 21** | **SESAME 6 / 6 Pro** | SesameOS 3 |
-| **9 / 10 / 25 / 26** | **SESAME Touch 1/2 系列** | SesameOS 3 |
+| **9 / 10 / 25 / 26** | **SESAME Touch 1 / 2 系列** | SesameOS 3 |
+| **18 / 19** | **SESAME Face 1 / Pro 系列** | SesameOS 3 |
 
 ---
 

@@ -17,11 +17,12 @@ A modern, high-performance Home Assistant custom integration for direct, local B
 - **⚡ SesameOS 3 Protocol**: Full native implementation of the SesameOS 3 cryptographic stack (ECDH P-256 key exchange & AES-CMAC message authentication).
 - **📱 Broad Hardware Support**:
   - **Sesame 5 & Sesame 5 Pro**
-  - **Sesame Touch 1 & Sesame Touch 1 Pro** (Keypad & Fingerprint reader)
-  - **Sesame Bike 2**
-  - **Sesame Bot 2**
+  - **Sesame Touch 1 / Touch 1 Pro & Touch 2 / Touch 2 Pro** (Keypad & Fingerprint reader, full series support)
+  - **Sesame Bike 2 & Sesame Bike 3**
+  - **Sesame Bot 2 & Sesame Bot 3**
   - **Sesame 5 US**
-  - **Sesame Face 1 Pro**
+  - **Sesame 6 & Sesame 6 Pro**
+  - **Sesame Face 1 & Sesame Face 1 Pro**
 - **🔄 Dual Connection Modes**:
   - **Real-Time Persistent Mode (Recommended)**: Keeps a continuous BLE connection with keep-alive signals for instant status reports (<1s), real-time automation triggers, and immediate one-time passcode invalidation.
   - **Power-Saving Mode**: Connects only on-demand or at configurable intervals to maximize battery life.
@@ -43,10 +44,11 @@ A modern, high-performance Home Assistant custom integration for direct, local B
 | **Sesame 5** | 5 | ✅ | ✅ | ✅ | — |
 | **Sesame 5 Pro** | 7 | ✅ | ✅ | ✅ | — |
 | **Sesame 5 US** | 16 | ✅ | ✅ | ✅ | — |
-| **Sesame Bike 2** | 6 | ✅ | ✅ | ✅ | — |
-| **Sesame Touch 1 / Pro** | 9, 10 | — | ✅ | ✅ | ✅ (Passcodes) |
-| **Sesame Bot 2** | 17 | ✅ | ✅ | ✅ | — |
-| **Sesame Face 1 Pro** | 18 | — | ✅ | ✅ | ✅ (Passcodes) |
+| **Sesame 6 / 6 Pro** | 20, 21 | ✅ | ✅ | ✅ | — |
+| **Sesame Bike 2 / 3** | 6, 33 | ✅ | ✅ | ✅ | — |
+| **Sesame Touch 1 / 2 & Pro** | 9, 10, 25, 26 | — | ✅ | ✅ | ✅ (Passcodes) |
+| **Sesame Bot 2 / 3** | 17, 35 | ✅ | ✅ | ✅ | — |
+| **Sesame Face 1 / Pro** | 18, 19 | — | ✅ | ✅ | ✅ (Passcodes) |
 
 ---
 
@@ -108,6 +110,12 @@ To pair your lock, Home Assistant needs the device's **Secret Key** exported fro
 ---
 
 ## 🛠️ Services (Passcode Management)
+
+> [!WARNING]
+> ### ⚠️ Important Notice & Limitations for Temporary and One-Time Passcodes
+> 1. **Managed by Home Assistant**: Sesame Touch keypads do not natively store expiration timestamps or one-time flags in their firmware. Temporary passcodes (`duration`) and one-time passcodes (`one_time`) are tracked in memory and deleted by Home Assistant over BLE.
+> 2. **Bluetooth Connection Requirement**: When the timer expires or the door is unlocked, Home Assistant initiates a BLE connection to the keypad to delete the passcode. **If the keypad is asleep, out of Bluetooth range, or if Home Assistant is offline at that moment, the passcode cannot be automatically removed** and must be deleted manually once connection is restored.
+> 3. **One-Time Passcode Trigger Behavior**: Due to SesameOS 3 lock protocol design, the door lock only reports that an unlock occurred via "Keypad Password"; **it does NOT report which passcode PIN or label was entered**. Consequently, **ANY keypad password unlock** on the linked lock will trigger the auto-deletion of active one-time passcodes. If a homeowner unlocks using their regular permanent passcode while a one-time passcode is pending, the one-time passcode will also be cleared. Use OTPs only during active guest arrival windows.
 
 ### 1. `sesame5_ble.add_passcode`
 Add a permanent, temporary, or one-time passcode to a Sesame Touch / Keypad.

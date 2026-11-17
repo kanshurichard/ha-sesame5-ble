@@ -337,7 +337,19 @@ class Sesame5Coordinator(DataUpdateCoordinator[Sesame5State]):
                 self.address,
                 code_name,
             )
-            self._safe_create_task(self.async_delete_passcode(code))
+
+            async def _do_delete_one_time(target_code: str = code, target_name: str = code_name) -> None:
+                try:
+                    await self.async_delete_passcode(target_code)
+                except Exception as err:
+                    LOGGER.warning(
+                        "[%s] Failed to auto-delete one-time passcode '%s': %s (Keypad may be asleep or unreachable via BLE)",
+                        self.address,
+                        target_name,
+                        err,
+                    )
+
+            self._safe_create_task(_do_delete_one_time())
 
     async def _ensure_connected(self) -> None:
         """Ensure active and authenticated BLE connection to lock."""
@@ -414,7 +426,19 @@ class Sesame5Coordinator(DataUpdateCoordinator[Sesame5State]):
                     name,
                     duration,
                 )
-                self._safe_create_task(self.async_delete_passcode(passcode))
+
+                async def _do_delete_expired(target_code: str = passcode, target_name: str = name) -> None:
+                    try:
+                        await self.async_delete_passcode(target_code)
+                    except Exception as err:
+                        LOGGER.warning(
+                            "[%s] Failed to auto-delete expired temporary passcode '%s': %s (Keypad may be asleep or unreachable via BLE)",
+                            self.address,
+                            target_name,
+                            err,
+                        )
+
+                self._safe_create_task(_do_delete_expired())
 
             unsub = async_call_later(self.hass, duration, _auto_delete_timer)
 
