@@ -89,6 +89,9 @@ class Sesame5Device:
         self._is_notifying = False
         self._decrypt_failure_count = 0
         self._history_in_progress = False
+        self._last_history_id = entry.data.get("last_history_id", -1)
+        self._history_queue: asyncio.Queue = asyncio.Queue()
+        self._sync_task = asyncio.create_task(self._history_sync_worker())
 
         self._initial_token_received = asyncio.Event()
         self._logged_in = asyncio.Event()
@@ -96,6 +99,23 @@ class Sesame5Device:
         self._fingerprints_received = asyncio.Event()
         self._cards_received = asyncio.Event()
         self._command_response_futures: dict[int, asyncio.Future[tuple[ResultCode, bytes]]] = {}
+
+    async def _history_sync_worker(self) -> None:
+        """Worker task to process history sync requests sequentially."""
+        while True:
+            await self._history_queue.get()
+            try:
+                await self.request_history(retries=3)
+            except Exception as err:
+                LOGGER.error("[%s] History sync worker failed: %s", self._address, err)
+            finally:
+                self._history_queue.task_done()
+
+    async def _persist_history_id(self) -> None:
+        """Persist the last processed history ID to the config entry."""
+        if self._config_entry:
+            data = {**self._config_entry.data, "last_history_id": self._last_history_id}
+            self._hass.config_entries.async_update_entry(self._config_entry, data=data)
 
     @property
     def address(self) -> str:
@@ -258,6 +278,9 @@ class Sesame5Device:
         self._rx_buffer = BleFrameReceiver()
         self._decrypt_failure_count = 0
         self._history_in_progress = False
+        self._last_history_id = entry.data.get("last_history_id", -1)
+        self._history_queue: asyncio.Queue = asyncio.Queue()
+        self._sync_task = asyncio.create_task(self._history_sync_worker())
 
         # Cancel any pending command futures
         for fut in self._command_response_futures.values():
@@ -617,6 +640,9 @@ class Sesame5Device:
             LOGGER.debug("[%s] Failed to fetch history record (non-fatal): %s", self._address, err)
         finally:
             self._history_in_progress = False
+        self._last_history_id = entry.data.get("last_history_id", -1)
+        self._history_queue: asyncio.Queue = asyncio.Queue()
+        self._sync_task = asyncio.create_task(self._history_sync_worker())
         return None
 
     async def add_passcode(self, passcode: str, name: str = "HA") -> None:
@@ -742,5 +768,8 @@ class Sesame5Device:
         self._rx_buffer = BleFrameReceiver()
         self._decrypt_failure_count = 0
         self._history_in_progress = False
+        self._last_history_id = entry.data.get("last_history_id", -1)
+        self._history_queue: asyncio.Queue = asyncio.Queue()
+        self._sync_task = asyncio.create_task(self._history_sync_worker())
         self._last_known_locked = None
         LOGGER.debug("[%s] Disconnected cleanly", self._address)
