@@ -206,7 +206,7 @@ class Sesame5LastOperationTimeSensor(CoordinatorEntity[Sesame5Coordinator], Rest
             last_state = await self.async_get_last_state()
             if last_state and last_state.state not in (None, "unknown", "unavailable"):
                 try:
-                    self._restored_value = datetime.fromisoformat(last_state.state)
+                    self._restored_value = datetime.fromisoformat(last_state.state.replace("Z", "+00:00"))
                 except Exception:
                     pass
 
@@ -284,7 +284,7 @@ class Sesame5LastUnlockTimeSensor(CoordinatorEntity[Sesame5Coordinator], Restore
             last_state = await self.async_get_last_state()
             if last_state and last_state.state not in (None, "unknown", "unavailable"):
                 try:
-                    self._restored_value = datetime.fromisoformat(last_state.state)
+                    self._restored_value = datetime.fromisoformat(last_state.state.replace("Z", "+00:00"))
                 except Exception:
                     pass
 
@@ -362,7 +362,7 @@ class Sesame5LastLockTimeSensor(CoordinatorEntity[Sesame5Coordinator], RestoreEn
             last_state = await self.async_get_last_state()
             if last_state and last_state.state not in (None, "unknown", "unavailable"):
                 try:
-                    self._restored_value = datetime.fromisoformat(last_state.state)
+                    self._restored_value = datetime.fromisoformat(last_state.state.replace("Z", "+00:00"))
                 except Exception:
                     pass
 

@@ -90,7 +90,7 @@ class Sesame5DoorBinarySensor(CoordinatorEntity[Sesame5Coordinator], RestoreEnti
 
     def _sync_visibility(self) -> None:
         """Synchronize door sensor visibility: hide by default when not detected, unhide when detected."""
-        if not self.hass:
+        if not self.hass or not self.entity_id:
             return
 
         ent_reg = er.async_get(self.hass)
@@ -110,7 +110,9 @@ class Sesame5DoorBinarySensor(CoordinatorEntity[Sesame5Coordinator], RestoreEnti
                 )
                 ent_reg.async_update_entity(self.entity_id, hidden_by=None)
         else:
-            # No Open Sensor detected:
+            # Only run default-hiding if coordinator data has actually been received!
+            if not self.coordinator.data:
+                return
             # For existing/upgraded entries, ensure it is hidden by default if never initialized
             sub_options = reg_entry.options.get(DOMAIN, {}) if reg_entry.options else {}
             if not sub_options.get("visibility_initialized"):
