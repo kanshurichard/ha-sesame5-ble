@@ -75,6 +75,26 @@ PRODUCT_NAMES: dict[int, str] = {
     ProductModel.SESAME_BOT_3.value: "Sesame Bot 3",
 }
 
+MODEL_NAME_TO_ID: dict[str, int] = {v: k for k, v in PRODUCT_NAMES.items()}
+
+MANUAL_MODEL_OPTIONS: list[str] = [
+    "Sesame 5",
+    "Sesame 5 Pro",
+    "Sesame 5 US",
+    "Sesame 6",
+    "Sesame 6 Pro",
+    "Sesame Touch 2 Pro",
+    "Sesame Touch 2",
+    "Sesame Touch 1 Pro",
+    "Sesame Touch 1",
+    "Sesame Face 1 Pro",
+    "Sesame Face 1",
+    "Sesame Bike 2",
+    "Sesame Bike 3",
+    "Sesame Bot 2",
+    "Sesame Bot 3",
+]
+
 LOCK_MODELS = {
     ProductModel.SESAME_5.value,
     ProductModel.SESAME_5_PRO.value,

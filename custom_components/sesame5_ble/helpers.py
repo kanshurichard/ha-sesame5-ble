@@ -31,20 +31,25 @@ if TYPE_CHECKING:
 
 def calculate_battery_percentage(voltage: float) -> int:
     """Calculate battery percentage from voltage using Sesame interpolation table."""
-    if voltage >= VOLTAGE_LEVELS[0]:
-        return int(BATTERY_PERCENTAGES[0])
-    if voltage <= VOLTAGE_LEVELS[-1]:
-        return int(BATTERY_PERCENTAGES[-1])
+    try:
+        if voltage is None or voltage <= 0:
+            return 0
+        if voltage >= VOLTAGE_LEVELS[0]:
+            return int(BATTERY_PERCENTAGES[0])
+        if voltage <= VOLTAGE_LEVELS[-1]:
+            return int(BATTERY_PERCENTAGES[-1])
 
-    for i in range(len(VOLTAGE_LEVELS) - 1):
-        v_upper = VOLTAGE_LEVELS[i]
-        v_lower = VOLTAGE_LEVELS[i + 1]
-        if v_lower < voltage <= v_upper:
-            ratio = (voltage - v_lower) / (v_upper - v_lower)
-            p_upper = BATTERY_PERCENTAGES[i]
-            p_lower = BATTERY_PERCENTAGES[i + 1]
-            return int((p_upper - p_lower) * ratio + p_lower)
-
+        for i in range(len(VOLTAGE_LEVELS) - 1):
+            v_upper = VOLTAGE_LEVELS[i]
+            v_lower = VOLTAGE_LEVELS[i + 1]
+            if v_lower < voltage <= v_upper:
+                ratio = (voltage - v_lower) / (v_upper - v_lower)
+                p_upper = BATTERY_PERCENTAGES[i]
+                p_lower = BATTERY_PERCENTAGES[i + 1]
+                pct = int((p_upper - p_lower) * ratio + p_lower)
+                return max(0, min(100, pct))
+    except Exception:
+        pass
     return 0
 
 
@@ -489,6 +494,8 @@ class BleFrameTransmitter:
 class BleFrameReceiver:
     """Reassembles fragmented BLE notification packets into a single message."""
 
+    MAX_BUFFER_SIZE = 512
+
     def __init__(self) -> None:
         self._buffer = bytearray()
 
@@ -511,6 +518,13 @@ class BleFrameReceiver:
         if is_beginning:
             self._buffer = bytearray(data)
         else:
+            if not self._buffer:
+                # Discard orphan continuation packets without a preceding BEGINNING packet
+                return None, None
+            if len(self._buffer) + len(data) > self.MAX_BUFFER_SIZE:
+                # Buffer overflow protection against corrupted packet streams
+                self._buffer.clear()
+                return None, None
             self._buffer.extend(data)
 
         if is_encrypted_end:
@@ -550,9 +564,9 @@ def format_passcode_add_payload(passcode: str, name: str = "HA") -> bytes:
     """
     clean_code = str(passcode).strip()
     if not clean_code.isdigit():
-        raise ValueError(f"Passcode must contain only digits: {passcode}")
+        raise ValueError("Passcode must contain only digits")
     if not (4 <= len(clean_code) <= 16):
-        raise ValueError(f"Passcode length must be between 4 and 16 digits, got {len(clean_code)}")
+        raise ValueError("Passcode length must be between 4 and 16 digits")
 
     # Convert each digit character to single integer byte 0..9
     id_bytes = bytes([int(c) for c in clean_code])
@@ -580,7 +594,7 @@ def format_passcode_delete_payload(passcode: str) -> bytes:
     try:
         return bytes.fromhex(clean)
     except ValueError:
-        raise ValueError(f"Invalid passcode format: {passcode}")
+        raise ValueError("Invalid passcode format")
 
 
 def parse_credential_records(payload: bytes) -> list[dict[str, Any]]:

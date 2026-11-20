@@ -23,7 +23,7 @@ add_passcode:
       example: "123456"
       selector:
         text:
-          type: text
+          type: password
     name:
       name: Passcode Name
       description: Name or label for the passcode (e.g. Guest, Cleaner, Delivery).
@@ -76,6 +76,7 @@ delete_passcode:
       example: "123456"
       selector:
         text:
+          type: password
 
 get_passcodes:
   name: Get Passcode List

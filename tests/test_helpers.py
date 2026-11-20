@@ -40,6 +40,10 @@ class TestHelpers(unittest.TestCase):
         # Between 5.85 and 5.82 -> interpolated
         val = calculate_battery_percentage(5.835)
         self.assertEqual(val, 97)
+        # Boundary / invalid inputs
+        self.assertEqual(calculate_battery_percentage(0), 0)
+        self.assertEqual(calculate_battery_percentage(-1.5), 0)
+        self.assertEqual(calculate_battery_percentage(100.0), 100)
 
     def test_create_history_tag(self):
         # Normal tag
@@ -150,6 +154,20 @@ class TestHelpers(unittest.TestCase):
 
         self.assertTrue(final_enc)
         self.assertEqual(final_msg, long_msg)
+
+    def test_ble_frame_receiver_overflow_protection(self):
+        """Test receiver protects against corrupted runaway BLE packet streams."""
+        rx = BleFrameReceiver()
+        # Feed beginning packet
+        rx.feed(bytes([PacketType.BEGINNING]) + b"A" * 10)
+        self.assertEqual(len(rx._buffer), 10)
+
+        # Feed packets exceeding MAX_BUFFER_SIZE (512 bytes) without END flag
+        for _ in range(30):
+            rx.feed(bytes([0x00]) + b"B" * 19)
+
+        # Buffer should have been cleared upon exceeding 512 bytes
+        self.assertEqual(len(rx._buffer), 0)
 
     def test_history_record_parsing(self):
         # Format: [result(1B), record_id(4B), type(1B), timestamp(4B), mecha_status(7B), tag_data...]

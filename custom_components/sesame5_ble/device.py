@@ -76,6 +76,8 @@ class Sesame5Device:
         self._mech_status: Sesame5MechStatus | None = None
         self._mech_settings: Sesame5MechSetting | None = None
         self._history: Sesame5HistoryRecord | None = None
+        self._last_unlock_history: Sesame5HistoryRecord | None = None
+        self._last_lock_history: Sesame5HistoryRecord | None = None
         self._door_open: bool | None = None
         self._last_known_locked: bool | None = None
         self._passcodes: list[dict[str, Any]] = []
@@ -89,9 +91,7 @@ class Sesame5Device:
         self._is_notifying = False
         self._decrypt_failure_count = 0
         self._history_in_progress = False
-        self._last_history_id = entry.data.get("last_history_id", -1)
-        self._history_queue: asyncio.Queue = asyncio.Queue()
-        self._sync_task = asyncio.create_task(self._history_sync_worker())
+        self._background_tasks: set[asyncio.Task[Any]] = set()
 
         self._initial_token_received = asyncio.Event()
         self._logged_in = asyncio.Event()
@@ -100,22 +100,20 @@ class Sesame5Device:
         self._cards_received = asyncio.Event()
         self._command_response_futures: dict[int, asyncio.Future[tuple[ResultCode, bytes]]] = {}
 
-    async def _history_sync_worker(self) -> None:
-        """Worker task to process history sync requests sequentially."""
-        while True:
-            await self._history_queue.get()
-            try:
-                await self.request_history(retries=3)
-            except Exception as err:
-                LOGGER.error("[%s] History sync worker failed: %s", self._address, err)
-            finally:
-                self._history_queue.task_done()
-
-    async def _persist_history_id(self) -> None:
-        """Persist the last processed history ID to the config entry."""
-        if self._config_entry:
-            data = {**self._config_entry.data, "last_history_id": self._last_history_id}
-            self._hass.config_entries.async_update_entry(self._config_entry, data=data)
+    def _create_task(self, coro: Any) -> asyncio.Task[Any]:
+        """Create and track a background task to prevent garbage collection or leaks."""
+        try:
+            loop = asyncio.get_running_loop()
+            task = loop.create_task(coro)
+        except RuntimeError:
+            loop = getattr(self._hass, "loop", None)
+            if loop and hasattr(loop, "create_task") and loop.is_running():
+                task = loop.create_task(coro)
+            else:
+                task = asyncio.create_task(coro)
+        self._background_tasks.add(task)
+        task.add_done_callback(self._background_tasks.discard)
+        return task
 
     @property
     def address(self) -> str:
@@ -150,6 +148,14 @@ class Sesame5Device:
     @property
     def history(self) -> Sesame5HistoryRecord | None:
         return self._history
+
+    @property
+    def last_unlock_history(self) -> Sesame5HistoryRecord | None:
+        return self._last_unlock_history
+
+    @property
+    def last_lock_history(self) -> Sesame5HistoryRecord | None:
+        return self._last_lock_history
 
     @property
     def passcodes(self) -> list[dict[str, Any]]:
@@ -278,9 +284,6 @@ class Sesame5Device:
         self._rx_buffer = BleFrameReceiver()
         self._decrypt_failure_count = 0
         self._history_in_progress = False
-        self._last_history_id = entry.data.get("last_history_id", -1)
-        self._history_queue: asyncio.Queue = asyncio.Queue()
-        self._sync_task = asyncio.create_task(self._history_sync_worker())
 
         # Cancel any pending command futures
         for fut in self._command_response_futures.values():
@@ -335,7 +338,7 @@ class Sesame5Device:
             if self.is_keypad:
                 await self.request_credentials()
             else:
-                asyncio.create_task(self.request_history())
+                self._create_task(self.request_history())
 
     async def _on_notify(self, characteristic: BleakGATTCharacteristic, data: bytearray) -> None:
         """Handle incoming GATT notifications from RX characteristic."""
@@ -365,7 +368,7 @@ class Sesame5Device:
                         self._address,
                     )
                     self._decrypt_failure_count = 0
-                    asyncio.create_task(self.disconnect())
+                    self._create_task(self.disconnect())
                 return
 
         if len(raw) < 2:
@@ -431,11 +434,11 @@ class Sesame5Device:
                         finally:
                             self._notify_update()
 
-                    asyncio.create_task(_sync_history_and_notify())
+                    self._create_task(_sync_history_and_notify())
                 else:
                     self._notify_update()
                     if self.is_ready and not self.is_keypad:
-                        asyncio.create_task(self.request_history())
+                        self._create_task(self.request_history())
             except Exception:
                 LOGGER.exception("[%s] Failed to parse MECH_STATUS", self._address)
 
@@ -513,6 +516,39 @@ class Sesame5Device:
             LOGGER.info("[%s] Keypad reported card event (%d)", self._address, item_code)
             self._notify_update()
 
+    def _process_history_record(self, record: Sesame5HistoryRecord) -> None:
+        """Process a parsed history record and route to appropriate history slots."""
+        # 1. Update door sensor status if open sensor data is present
+        if record.door_open is not None:
+            self._door_open = record.door_open
+
+        # 2. Only update lock operation history if it is a genuine lock/unlock operation
+        # Note: 门磁感应门开 has is_lock_operation=False and is excluded from all operation sensors.
+        # 关门自动上锁 has action="lock" and is_lock_operation=True and is included in last_lock & last_operation!
+        if record.is_lock_operation:
+            self._history = record
+            if record.action == "unlock":
+                self._last_unlock_history = record
+            elif record.action == "lock":
+                self._last_lock_history = record
+
+            LOGGER.info(
+                "[%s] Lock operation update: %s (action=%s, source=%s, tag=%s, time=%s)",
+                self._address,
+                record.description_zh,
+                record.action,
+                record.source,
+                record.tag_name or (record.history_tag_type.name if record.history_tag_type else "NONE"),
+                record.iso_timestamp,
+            )
+        else:
+            LOGGER.debug(
+                "[%s] Non-lock event ignored for last_operation: %s (door_open=%s)",
+                self._address,
+                record.description_zh,
+                record.door_open,
+            )
+
     async def _handle_response(self, item_code: int, result_code_val: int, resp_data: bytes) -> None:
         """Handle synchronous command responses from the lock."""
         result_code = ResultCode(result_code_val) if result_code_val in ResultCode._value2member_map_ else ResultCode.UNKNOWN
@@ -526,25 +562,6 @@ class Sesame5Device:
                 LOGGER.error("[%s] LOGIN rejected with result: %s", self._address, result_code.name)
                 self._logged_in.clear()
                 self._state = STATE_DISCONNECTED
-
-        elif item_code == ItemCode.HISTORY.value and result_code == ResultCode.SUCCESS:
-            if len(resp_data) >= 16:
-                try:
-                    full_raw = bytes([result_code.value]) + resp_data
-                    self._history = Sesame5HistoryRecord(full_raw)
-                    if self._history.door_open is not None:
-                        self._door_open = self._history.door_open
-                    LOGGER.info(
-                        "[%s] History update: %s (source=%s, tag=%s, time=%s)",
-                        self._address,
-                        self._history.description_zh,
-                        self._history.source,
-                        self._history.tag_name or (self._history.history_tag_type.name if self._history.history_tag_type else ""),
-                        self._history.iso_timestamp,
-                    )
-                    self._notify_update()
-                except Exception:
-                    LOGGER.exception("[%s] Failed to parse HISTORY record", self._address)
 
         # Resolve any waiting command future
         if item_code in self._command_response_futures:
@@ -573,9 +590,8 @@ class Sesame5Device:
             await self._transmit(data_to_send, is_encrypted=is_encrypted)
             result_code, resp_data = await asyncio.wait_for(future, timeout=COMMAND_TIMEOUT)
             return result_code, resp_data
-        except Exception:
+        finally:
             self._command_response_futures.pop(item_code.value, None)
-            raise
 
     async def lock(self, tag: str | None = None) -> None:
         """Send lock command with history tag."""
@@ -611,38 +627,13 @@ class Sesame5Device:
             if result == ResultCode.SUCCESS and len(resp_data) >= 16:
                 full_raw = bytes([result.value]) + resp_data
                 record = Sesame5HistoryRecord(full_raw)
-
-                # 1. Update door sensor status if open sensor data is present
-                if record.door_open is not None:
-                    self._door_open = record.door_open
-
-                # 2. Only update lock operation history if it is a genuine lock/unlock operation
-                if record.is_lock_operation:
-                    self._history = record
-                    LOGGER.info(
-                        "[%s] Lock operation update: %s (source=%s, tag=%s, time=%s)",
-                        self._address,
-                        self._history.description_zh,
-                        self._history.source,
-                        self._history.history_tag_type.name if self._history.history_tag_type else "NONE",
-                        self._history.iso_timestamp,
-                    )
-                else:
-                    LOGGER.debug(
-                        "[%s] Non-lock event ignored for last_operation: %s (door_open=%s)",
-                        self._address,
-                        record.description_zh,
-                        record.door_open,
-                    )
+                self._process_history_record(record)
                 self._notify_update()
                 return record
-        except Exception as err:
+        except (Exception, asyncio.CancelledError) as err:
             LOGGER.debug("[%s] Failed to fetch history record (non-fatal): %s", self._address, err)
         finally:
             self._history_in_progress = False
-        self._last_history_id = entry.data.get("last_history_id", -1)
-        self._history_queue: asyncio.Queue = asyncio.Queue()
-        self._sync_task = asyncio.create_task(self._history_sync_worker())
         return None
 
     async def add_passcode(self, passcode: str, name: str = "HA") -> None:
@@ -768,8 +759,12 @@ class Sesame5Device:
         self._rx_buffer = BleFrameReceiver()
         self._decrypt_failure_count = 0
         self._history_in_progress = False
-        self._last_history_id = entry.data.get("last_history_id", -1)
-        self._history_queue: asyncio.Queue = asyncio.Queue()
-        self._sync_task = asyncio.create_task(self._history_sync_worker())
         self._last_known_locked = None
+
+        # Cancel any active background tasks
+        for task in list(self._background_tasks):
+            if not task.done():
+                task.cancel()
+        self._background_tasks.clear()
+
         LOGGER.debug("[%s] Disconnected cleanly", self._address)

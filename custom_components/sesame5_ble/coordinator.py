@@ -54,6 +54,8 @@ class Sesame5State:
     mech_status: Sesame5MechStatus | None
     mech_settings: Sesame5MechSetting | None
     history: Sesame5HistoryRecord | None = None
+    last_unlock_history: Sesame5HistoryRecord | None = None
+    last_lock_history: Sesame5HistoryRecord | None = None
     passcode_count: int = 0
     fingerprint_count: int = 0
     card_count: int = 0
@@ -159,6 +161,8 @@ class Sesame5Coordinator(DataUpdateCoordinator[Sesame5State]):
             mech_status=self._device.mech_status,
             mech_settings=self._device.mech_settings,
             history=self._device.history,
+            last_unlock_history=self._device.last_unlock_history,
+            last_lock_history=self._device.last_lock_history,
             passcode_count=self._device.passcode_count,
             fingerprint_count=self._device.fingerprint_count,
             card_count=self._device.card_count,

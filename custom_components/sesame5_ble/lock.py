@@ -108,6 +108,14 @@ class Sesame5BleLock(CoordinatorEntity[Sesame5Coordinator], LockEntity):
             attrs["last_operation_time"] = hist.iso_timestamp
             if hist.tag_name:
                 attrs["last_operation_tag"] = hist.tag_name
+        if data and data.last_unlock_history:
+            u_hist = data.last_unlock_history
+            attrs["last_unlock_method"] = u_hist.description_zh
+            attrs["last_unlock_time"] = u_hist.iso_timestamp
+        if data and data.last_lock_history:
+            l_hist = data.last_lock_history
+            attrs["last_lock_method"] = l_hist.description_zh
+            attrs["last_lock_time"] = l_hist.iso_timestamp
         return attrs
 
     async def async_lock(self, **kwargs: Any) -> None:

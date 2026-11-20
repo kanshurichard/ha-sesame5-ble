@@ -103,10 +103,13 @@ class TestSesame5Device(unittest.IsolatedAsyncioTestCase):
 
         # Simulate existing fingerprint unlock history
         fp_payload = struct.pack("<BiBI7sBB16s", 0, 109, 2, 1731580000, b"\x00" * 7, 0, 1, b"\x11" * 16)
-        self.device._history = Sesame5HistoryRecord(fp_payload)
-        self.assertEqual(self.device._history.description_zh, "门外指纹解锁")
+        fp_record = Sesame5HistoryRecord(fp_payload)
+        self.device._process_history_record(fp_record)
+        self.assertEqual(self.device.history.description_zh, "门外指纹解锁")
+        self.assertEqual(self.device.last_unlock_history.description_zh, "门外指纹解锁")
+        self.assertIsNone(self.device.last_lock_history)
 
-        # Now simulate receiving an Open Sensor door-opening event
+        # 1. Simulate receiving an Open Sensor door-opening event (0x5A)
         os_open_payload = bytes.fromhex("00540000000194b8f96abf0b4200d500540007112005090108080457005c00ffffffffc40ab90a5aff")
 
         with patch.object(self.device, "send_command", new_callable=AsyncMock) as mock_cmd:
@@ -116,9 +119,45 @@ class TestSesame5Device(unittest.IsolatedAsyncioTestCase):
             self.assertIsNotNone(record)
             # Door sensor must update door state to open
             self.assertTrue(self.device.door_open)
-            # BUT _history must NOT be overwritten by door-opening event!
+            # BUT _history & _last_unlock_history must NOT be overwritten by door-opening event!
             self.assertEqual(self.device.history.description_zh, "门外指纹解锁")
             self.assertEqual(self.device.history.source, "outside")
+            self.assertEqual(self.device.last_unlock_history.description_zh, "门外指纹解锁")
+            self.assertIsNone(self.device.last_lock_history)
+
+        # 2. Simulate receiving an Open Sensor door-closing auto-lock event (0x5B)
+        os_close_payload = bytes.fromhex("00540000000194b8f96abf0b4200d500540007112005090108080457005c00ffffffffc40ab90a5bff")
+        with patch.object(self.device, "send_command", new_callable=AsyncMock) as mock_cmd:
+            mock_cmd.return_value = (ResultCode.SUCCESS, os_close_payload[1:])
+            record_close = await self.device.request_history()
+
+            self.assertIsNotNone(record_close)
+            # Door sensor updates door state to closed
+            self.assertFalse(self.device.door_open)
+            # "关门自动上锁" IS a lock operation -> updates last_operation AND last_lock_operation
+            self.assertEqual(self.device.history.description_zh, "关门自动上锁")
+            self.assertEqual(self.device.last_lock_history.description_zh, "关门自动上锁")
+            # BUT last_unlock_history STILL preserves the fingerprint unlock!
+            self.assertEqual(self.device.last_unlock_history.description_zh, "门外指纹解锁")
+
+    async def test_lifecycle_disconnect_and_history_clean(self):
+        """Test disconnect and history calls do not raise NameError or create lingering tasks."""
+        # 1. request_history returns None (empty / failure)
+        with patch.object(self.device, "send_command", new_callable=AsyncMock) as mock_cmd:
+            mock_cmd.return_value = (ResultCode.NOT_FOUND, b"")
+            record = await self.device.request_history()
+            self.assertIsNone(record)
+            self.assertFalse(self.device._history_in_progress)
+
+        # 2. _on_disconnect cleans up properly
+        self.device._on_disconnect(MagicMock())
+        self.assertFalse(self.device.is_connected)
+        self.assertFalse(self.device._history_in_progress)
+
+        # 3. disconnect cleans up properly
+        await self.device.disconnect()
+        self.assertFalse(self.device.is_connected)
+        self.assertFalse(self.device._history_in_progress)
 
 
 if __name__ == "__main__":

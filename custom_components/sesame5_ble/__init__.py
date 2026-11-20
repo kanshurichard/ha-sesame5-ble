@@ -247,4 +247,20 @@ async def async_unload_entry(hass: HomeAssistant, entry: Sesame5ConfigEntry) -> 
     unload_ok = await hass.config_entries.async_unload_platforms(entry, platforms)
     if unload_ok and entry.runtime_data:
         await entry.runtime_data.shutdown()
+
+    if unload_ok:
+        loaded_entries = [
+            e
+            for e in hass.config_entries.async_loaded_entries(DOMAIN)
+            if e.entry_id != entry.entry_id
+        ]
+        if not loaded_entries:
+            for service_name in (
+                SERVICE_ADD_PASSCODE,
+                SERVICE_DELETE_PASSCODE,
+                SERVICE_GET_PASSCODES,
+            ):
+                if hass.services.has_service(DOMAIN, service_name):
+                    hass.services.async_remove(DOMAIN, service_name)
+
     return unload_ok

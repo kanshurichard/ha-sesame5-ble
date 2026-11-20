@@ -35,6 +35,14 @@
           "history_tag": "履歴タグ (アプリの解錠履歴に表示される名前)",
           "read_only": "読み取り専用モード (HAからの暗証番号変更を禁止)"
         }
+      },
+      "no_devices": {
+        "title": "Bluetoothデバイスが見つかりません",
+        "description": "近くのSesame Bluetoothブロードキャスト信号が見つかりませんでした（設定済みのデバイスは自動的に除外されます）。\n\n確認してください：\n1. デバイスが通信範囲内にあり、バッテリーが十分にあること。\n2. スリープ状態の場合は、公式アプリで操作するか本体を操作して起動してください。\n\nBluetooth MAC アドレスを手動入力して追加を試みますか？",
+        "menu_options": {
+          "manual": "Bluetooth MAC アドレスを手動入力して追加",
+          "retry": "Bluetoothデバイスを再スキャン"
+        }
       }
     },
     "error": {
@@ -44,7 +52,8 @@
       "device_not_found": "選択されたデバイスが見つかりませんでした。"
     },
     "abort": {
-      "already_configured": "この Sesame はすでに設定されています。"
+      "already_configured": "この Sesame はすでに設定されています。",
+      "bluetooth_not_available": "利用可能なBluetoothアダプターまたはリモートプロキシが見つかりません。Sesameデバイスに接続するには、少なくとも1つのBluetoothアダプターまたはESPHome Bluetoothプロキシが必要です。"
     }
   },
   "options": {
@@ -85,6 +94,18 @@
       },
       "last_operation_time": {
         "name": "最終操作時刻"
+      },
+      "last_unlock_operation": {
+        "name": "最終解錠方法"
+      },
+      "last_unlock_time": {
+        "name": "最終解錠時刻"
+      },
+      "last_lock_operation": {
+        "name": "最終施錠方法"
+      },
+      "last_lock_time": {
+        "name": "最終施錠時刻"
       },
       "password_count": {
         "name": "登録暗証番号数"
@@ -169,6 +190,24 @@
           "name": "Bluetooth MAC アドレス",
           "description": "キーパッドの Bluetooth MAC アドレス（任意）。"
         }
+      }
+    }
+  },
+  "selector": {
+    "connection_mode": {
+      "options": {
+        "realtime": "常時接続モード (常時BLE接続、推奨)",
+        "power_saving": "省電力モード (オンデマンド / 定期同期)"
+      }
+    },
+    "linked_lock": {
+      "options": {
+        "auto": "自動連携 (一致するすべてのSesameロックに反応)"
+      }
+    },
+    "device_selection": {
+      "options": {
+        "manual": "Bluetooth MAC アドレスを手動入力..."
       }
     }
   }

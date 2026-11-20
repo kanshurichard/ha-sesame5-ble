@@ -11,6 +11,8 @@ from homeassistant import config_entries
 from homeassistant.components.bluetooth import (
     BluetoothServiceInfoBleak,
     async_discovered_service_info,
+    async_request_active_scan,
+    async_scanner_count,
 )
 from homeassistant.const import CONF_ADDRESS
 from homeassistant.core import HomeAssistant, callback
@@ -40,7 +42,10 @@ from .const import (
     DEFAULT_READ_ONLY,
     DEFAULT_REFRESH_INTERVAL,
     DOMAIN,
+    MANUAL_MODEL_OPTIONS,
+    MODEL_NAME_TO_ID,
     PRODUCT_NAMES,
+    ProductModel,
     SERVICE_UUID,
     TOUCH_MODELS,
 )
@@ -119,7 +124,7 @@ def _get_configured_locks(hass: HomeAssistant, exclude_address: str | None = Non
     options = [
         {
             "value": DEFAULT_LINKED_LOCK,
-            "label": "自动关联（响应任何匹配的 Sesame 门锁开锁事件）",
+            "label": "Auto",
         }
     ]
     for entry in hass.config_entries.async_entries(DOMAIN):
@@ -174,6 +179,9 @@ class Sesame5ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         """Handle initial step: device discovery selection or manual input."""
         errors: dict[str, str] = {}
 
+        if not async_scanner_count(self.hass, connectable=True):
+            return self.async_abort(reason="bluetooth_not_available")
+
         if user_input is not None:
             address = user_input.get(CONF_ADDRESS)
             if address == "manual":
@@ -185,16 +193,38 @@ class Sesame5ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 self._selected_model = dev[CONF_MODEL]
                 self._selected_model_id = dev[CONF_MODEL_ID]
                 self._selected_device_id = dev[CONF_DEVICE_ID]
+
+                await self.async_set_unique_id(address)
+                self._abort_if_unique_id_configured()
+
                 return await self.async_step_auth()
 
             errors["base"] = "device_not_found"
 
+        configured_addresses = {
+            uid.upper() for uid in self._async_current_ids(include_ignore=False) if uid
+        } | {
+            str(entry.data.get(CONF_ADDRESS, "")).upper()
+            for entry in self._async_current_entries()
+            if entry.data.get(CONF_ADDRESS)
+        }
+
         scanned = _scan_sesame5_devices(self.hass)
-        self._discovered_devices = {d[CONF_ADDRESS]: d for d in scanned}
+        unconfigured = [
+            d for d in scanned
+            if d[CONF_ADDRESS].upper() not in configured_addresses
+        ]
+
+        if not unconfigured:
+            # No new/unconfigured devices found via Bluetooth broadcast.
+            # Ask user if they would like to enter MAC manually or retry.
+            return await self.async_step_no_devices()
+
+        self._discovered_devices = {d[CONF_ADDRESS]: d for d in unconfigured}
 
         options = [
             {"value": d[CONF_ADDRESS], "label": f"{d['name']} ({d['rssi']} dBm)"}
-            for d in scanned
+            for d in unconfigured
         ]
         options.append({"value": "manual", "label": "Enter Bluetooth MAC manually..."})
 
@@ -203,6 +233,7 @@ class Sesame5ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 vol.Required(CONF_ADDRESS): SelectSelector(
                     SelectSelectorConfig(
                         options=options,
+                        translation_key="device_selection",
                         mode=SelectSelectorMode.DROPDOWN,
                     )
                 )
@@ -211,22 +242,53 @@ class Sesame5ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
         return self.async_show_form(step_id="user", data_schema=schema, errors=errors)
 
+    async def async_step_no_devices(
+        self, user_input: dict[str, Any] | None = None
+    ) -> FlowResult:
+        """Handle no devices found step: ask user if they want to enter manually or rescan."""
+        return self.async_show_menu(
+            step_id="no_devices",
+            menu_options=["manual", "retry"],
+        )
+
+    async def async_step_retry(
+        self, user_input: dict[str, Any] | None = None
+    ) -> FlowResult:
+        """Rescan for Bluetooth devices."""
+        await async_request_active_scan(self.hass)
+        return await self.async_step_user()
+
     async def async_step_manual(
         self, user_input: dict[str, Any] | None = None
     ) -> FlowResult:
         """Handle manual address input."""
         errors: dict[str, str] = {}
 
+        if not async_scanner_count(self.hass, connectable=True):
+            return self.async_abort(reason="bluetooth_not_available")
+
         if user_input is not None:
-            self._selected_address = user_input[CONF_ADDRESS].strip()
+            address = user_input[CONF_ADDRESS].strip().upper()
+            await self.async_set_unique_id(address)
+            self._abort_if_unique_id_configured()
+
+            self._selected_address = address
             self._selected_model = user_input.get(CONF_MODEL, "Sesame 5")
-            self._selected_device_id = self._selected_address
+            self._selected_model_id = MODEL_NAME_TO_ID.get(
+                self._selected_model, ProductModel.SESAME_5.value
+            )
+            self._selected_device_id = address
             return await self.async_step_auth()
 
         schema = vol.Schema(
             {
                 vol.Required(CONF_ADDRESS): str,
-                vol.Optional(CONF_MODEL, default="Sesame 5"): str,
+                vol.Required(CONF_MODEL, default="Sesame 5"): SelectSelector(
+                    SelectSelectorConfig(
+                        options=MANUAL_MODEL_OPTIONS,
+                        mode=SelectSelectorMode.DROPDOWN,
+                    )
+                ),
             }
         )
         return self.async_show_form(step_id="manual", data_schema=schema, errors=errors)
@@ -316,6 +378,7 @@ class Sesame5ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     ): SelectSelector(
                         SelectSelectorConfig(
                             options=lock_options,
+                            translation_key="linked_lock",
                             mode=SelectSelectorMode.DROPDOWN,
                         )
                     ),
@@ -324,17 +387,6 @@ class Sesame5ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 }
             )
         else:
-            mode_options = [
-                {
-                    "value": CONNECTION_MODE_REALTIME,
-                    "label": "实时长连接模式（保持蓝牙常连，秒级响应状态变化，支持开锁自动化与单次密码即时失效，推荐）",
-                },
-                {
-                    "value": CONNECTION_MODE_POWER_SAVING,
-                    "label": "省电模式（按需/定期连线，无法实时感知开关锁，开锁自动化与单次密码即时失效将受限）",
-                },
-            ]
-
             schema = vol.Schema(
                 {
                     vol.Required(CONF_SECRET_KEY): str,
@@ -343,7 +395,11 @@ class Sesame5ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                         default=DEFAULT_CONNECTION_MODE,
                     ): SelectSelector(
                         SelectSelectorConfig(
-                            options=mode_options,
+                            options=[
+                                CONNECTION_MODE_REALTIME,
+                                CONNECTION_MODE_POWER_SAVING,
+                            ],
+                            translation_key="connection_mode",
                             mode=SelectSelectorMode.DROPDOWN,
                         )
                     ),
@@ -404,17 +460,6 @@ class Sesame5OptionsFlowHandler(config_entries.OptionsFlow):
             self.config_entry.data.get(CONF_READ_ONLY, DEFAULT_READ_ONLY),
         )
 
-        mode_options = [
-            {
-                "value": CONNECTION_MODE_REALTIME,
-                "label": "实时长连接模式（保持蓝牙常连，秒级响应状态变化，支持开锁自动化与单次密码即时失效，推荐）",
-            },
-            {
-                "value": CONNECTION_MODE_POWER_SAVING,
-                "label": "省电模式（按需/定期连线，无法实时感知开关锁，开锁自动化与单次密码即时失效将受限）",
-            },
-        ]
-
         schema = vol.Schema(
             {
                 vol.Required(
@@ -422,7 +467,11 @@ class Sesame5OptionsFlowHandler(config_entries.OptionsFlow):
                     default=current_mode,
                 ): SelectSelector(
                     SelectSelectorConfig(
-                        options=mode_options,
+                        options=[
+                            CONNECTION_MODE_REALTIME,
+                            CONNECTION_MODE_POWER_SAVING,
+                        ],
+                        translation_key="connection_mode",
                         mode=SelectSelectorMode.DROPDOWN,
                     )
                 ),
@@ -463,6 +512,7 @@ class Sesame5OptionsFlowHandler(config_entries.OptionsFlow):
                 ): SelectSelector(
                     SelectSelectorConfig(
                         options=lock_options,
+                        translation_key="linked_lock",
                         mode=SelectSelectorMode.DROPDOWN,
                     )
                 ),

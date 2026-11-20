@@ -1,0 +1,214 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Select Sesame 5 Device",
+        "description": "Choose a discovered Sesame 5 smart lock from the list below, or enter its Bluetooth MAC address manually.",
+        "data": {
+          "address": "Device"
+        }
+      },
+      "manual": {
+        "title": "Enter Device Details",
+        "description": "Please enter the Bluetooth MAC address of your Sesame 5 device.",
+        "data": {
+          "address": "Bluetooth MAC Address",
+          "model": "Model Name"
+        }
+      },
+      "auth": {
+        "title": "Authenticate Smart Lock: {device_name}",
+        "description": "Enter the Secret Key from your Sesame app.\n\n[Real-time Persistent Connection (Recommended)]: Keeps BLE connected for instant status updates, unlock automations, and one-time passcode auto-deletion.\n[Power-Saving Mode Limitations]: Connects only on-demand or periodically. Real-time manual unlock detection and instant one-time passcode deletion will be delayed or unavailable.\n[Read-Only Mode]: Prevents remote lock and unlock operations.",
+        "data": {
+          "secret_key": "Secret Key / QR Code URL",
+          "connection_mode": "Connection Mode",
+          "history_tag": "History Tag (Name shown in App log)",
+          "read_only": "Read-only mode (Monitor state and battery only; disable remote operations)"
+        }
+      },
+      "auth_keypad": {
+        "title": "Authenticate Keypad: {device_name}",
+        "description": "Enter the Secret Key from your Sesame app.\n\n[Power-Saving Architecture]: Keypads do not use persistent long connection and only connect on demand to maximize battery life.\n[Lock Binding]: Select the linked Sesame lock. When this lock is unlocked via password, the keypad will automatically connect and delete the one-time passcode immediately.\n[Read-Only Mode]: Prevents adding or deleting passcodes via HA to avoid accidental modifications.",
+        "data": {
+          "secret_key": "Secret Key / QR Code URL",
+          "linked_lock": "Linked Sesame Lock (for one-time passcode auto-deletion)",
+          "history_tag": "History Tag (Name shown in App log)",
+          "read_only": "Read-only mode (Disables remote passcode management)"
+        }
+      },
+      "no_devices": {
+        "title": "No Bluetooth Devices Found",
+        "description": "Could not discover any nearby Sesame Bluetooth advertisements (already configured devices have been excluded).\n\nPlease check:\n1. The device is within Bluetooth range and powered on.\n2. If the device was idle or sleeping, wake it in the Sesame mobile app or tap the lock.\n\nWould you like to manually enter a Bluetooth MAC address to attempt adding?",
+        "menu_options": {
+          "manual": "Enter Bluetooth MAC manually...",
+          "retry": "Rescan for Bluetooth devices"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Failed to connect to Sesame device via Bluetooth. Please ensure the device is within range.",
+      "invalid_auth": "Authentication failed. Please verify that your Secret Key or QR Code matches this device.",
+      "invalid_key_format": "Unrecognized key format. Please provide a valid Sesame QR code URL or 16-byte key.",
+      "device_not_found": "Selected device was not found."
+    },
+    "abort": {
+      "already_configured": "This Sesame device is already configured.",
+      "bluetooth_not_available": "No Bluetooth adapter or remote proxy configured. Home Assistant must have at least one Bluetooth adapter or ESPHome Bluetooth proxy to connect to Sesame devices."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Sesame Smart Lock Options",
+        "description": "[Real-time Mode (Recommended)]: Maintains persistent BLE connection for instant state feedback, automations, and one-time passcode auto-deletion.\n[Power-Saving Mode Limitations]: Disconnects after idle. Real-time physical unlock events cannot be pushed to HA until the next connection.\n[Read-Only Mode]: Prevents remote unlock and lock operations.",
+        "data": {
+          "connection_mode": "Connection Mode",
+          "refresh_interval": "Periodic refresh interval in minutes (Power-Saving Mode only; 0 = on-demand)",
+          "history_tag": "History Tag (Name shown in App unlock history)",
+          "read_only": "Read-only mode (Disables remote lock/unlock)"
+        }
+      },
+      "keypad": {
+        "title": "Sesame Keypad Options",
+        "description": "[Power-Saving Architecture]: Keypads do not use persistent long connection and only connect on demand to maximize battery life.\n[Lock Binding]: Select the linked Sesame lock. When this lock is unlocked via password, the keypad will automatically connect and delete the one-time passcode immediately.\n[Read-Only Mode]: Prevents adding or deleting passcodes via HA to avoid accidental modifications.",
+        "data": {
+          "linked_lock": "Linked Sesame Lock (for one-time passcode auto-deletion)",
+          "read_only": "Read-only mode (Disables remote passcode management)"
+        }
+      }
+    }
+  },
+  "entity": {
+    "sensor": {
+      "battery": {
+        "name": "Battery"
+      },
+      "voltage": {
+        "name": "Battery Voltage"
+      },
+      "angle": {
+        "name": "Angle"
+      },
+      "last_operation": {
+        "name": "Last Operation"
+      },
+      "last_operation_time": {
+        "name": "Last Operation Time"
+      },
+      "last_unlock_operation": {
+        "name": "Last Unlock Operation"
+      },
+      "last_unlock_time": {
+        "name": "Last Unlock Time"
+      },
+      "last_lock_operation": {
+        "name": "Last Lock Operation"
+      },
+      "last_lock_time": {
+        "name": "Last Lock Time"
+      },
+      "password_count": {
+        "name": "Password Count"
+      },
+      "fingerprint_count": {
+        "name": "Fingerprint Count"
+      },
+      "card_count": {
+        "name": "Card Count"
+      }
+    },
+    "binary_sensor": {
+      "battery_critical": {
+        "name": "Battery Low"
+      },
+      "moving": {
+        "name": "Motor Active"
+      },
+      "door": {
+        "name": "Door"
+      }
+    }
+  },
+  "services": {
+    "add_passcode": {
+      "name": "Add Passcode",
+      "description": "Add a passcode to a Sesame Touch / Keypad device (Touch 1/2 series). Supports temporary passcodes with an expiry duration and one-time passcodes. WARNING: Temporary expiry and one-time deletion are managed by Home Assistant via BLE. If the keypad is unreachable when the timer expires or when the door unlocks, deletion will fail. Also note that one-time passcodes auto-delete upon ANY keypad password unlock on the linked lock.",
+      "fields": {
+        "device_id": {
+          "name": "Device",
+          "description": "Target keypad device (optional)."
+        },
+        "address": {
+          "name": "Bluetooth MAC Address",
+          "description": "Bluetooth MAC address of the keypad (optional)."
+        },
+        "passcode": {
+          "name": "Passcode",
+          "description": "4 to 16 digit numerical passcode."
+        },
+        "name": {
+          "name": "Passcode Name",
+          "description": "Name or label for the passcode (e.g. Guest, Cleaner, Delivery)."
+        },
+        "duration": {
+          "name": "Duration (Seconds)",
+          "description": "Validity duration in seconds. Home Assistant automatically deletes this passcode when the timer expires. WARNING: Keypad must be in active Bluetooth range at expiration time to complete deletion; otherwise, the passcode will remain until manually deleted. Leave empty for permanent."
+        },
+        "one_time": {
+          "name": "Auto-delete After One Use",
+          "description": "Automatically delete passcode after first unlock. WARNING: Requires active Bluetooth connection between HA and keypad. Also note that ANY keypad password unlock on the linked lock triggers this deletion, because the lock protocol does not distinguish which passcode was entered."
+        }
+      }
+    },
+    "delete_passcode": {
+      "name": "Delete Passcode",
+      "description": "Delete a specific passcode from a Sesame Touch / Keypad device.",
+      "fields": {
+        "device_id": {
+          "name": "Device",
+          "description": "Target keypad device (optional)."
+        },
+        "address": {
+          "name": "Bluetooth MAC Address",
+          "description": "Bluetooth MAC address of the keypad (optional)."
+        },
+        "passcode": {
+          "name": "Passcode or Passcode ID",
+          "description": "Passcode digits (e.g. 123456) or hex ID to delete."
+        }
+      }
+    },
+    "get_passcodes": {
+      "name": "Get Passcode List",
+      "description": "Retrieve all registered passcodes from a Sesame Touch / Keypad device.",
+      "fields": {
+        "device_id": {
+          "name": "Device",
+          "description": "Target keypad device (optional)."
+        },
+        "address": {
+          "name": "Bluetooth MAC Address",
+          "description": "Bluetooth MAC address of the keypad (optional)."
+        }
+      }
+    }
+  },
+  "selector": {
+    "connection_mode": {
+      "options": {
+        "realtime": "Real-time (Persistent BLE connection, recommended)",
+        "power_saving": "Power-saving (On-demand connection / periodic sync)"
+      }
+    },
+    "linked_lock": {
+      "options": {
+        "auto": "Auto-bind (Any matched Sesame lock)"
+      }
+    },
+    "device_selection": {
+      "options": {
+        "manual": "Enter Bluetooth MAC manually..."
+      }
+    }
+  }
+}

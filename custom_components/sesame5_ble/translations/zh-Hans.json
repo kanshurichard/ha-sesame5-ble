@@ -35,6 +35,14 @@
           "history_tag": "操作记录标记 (App 历史记录中显示的名称)",
           "read_only": "只读保护模式 (禁止通过 HA 修改/删除密码以防误操作)"
         }
+      },
+      "no_devices": {
+        "title": "未搜索到蓝牙设备",
+        "description": "未搜索到附近的 Sesame 蓝牙广播信息（已配置的设备已自动排除）。\n\n请确认：\n1. 设备处于蓝牙有效覆盖范围内且电量充足。\n2. 若设备处于休眠状态，请在手机 App 中触发唤醒或轻触锁具。\n\n您是否要手动输入蓝牙 MAC 地址尝试添加？",
+        "menu_options": {
+          "manual": "手动输入蓝牙 MAC 地址尝试添加",
+          "retry": "重新扫描蓝牙设备"
+        }
       }
     },
     "error": {
@@ -44,7 +52,8 @@
       "device_not_found": "未找到所选设备。"
     },
     "abort": {
-      "already_configured": "该 Sesame 设备已配置过。"
+      "already_configured": "该 Sesame 设备已配置过。",
+      "bluetooth_not_available": "未检测到可用的蓝牙适配器或蓝牙代理。Home Assistant 必须至少配置一个本地蓝牙适配器或 ESPHome 蓝牙代理，才能连接 Sesame 设备。"
     }
   },
   "options": {
@@ -85,6 +94,18 @@
       },
       "last_operation_time": {
         "name": "最后操作时间"
+      },
+      "last_unlock_operation": {
+        "name": "最后开锁方式"
+      },
+      "last_unlock_time": {
+        "name": "最后开锁时间"
+      },
+      "last_lock_operation": {
+        "name": "最后关锁方式"
+      },
+      "last_lock_time": {
+        "name": "最后关锁时间"
       },
       "password_count": {
         "name": "已存密码数"
@@ -169,6 +190,24 @@
           "name": "蓝牙 MAC 地址",
           "description": "键盘设备的蓝牙 MAC 地址（可选）。"
         }
+      }
+    }
+  },
+  "selector": {
+    "connection_mode": {
+      "options": {
+        "realtime": "实时长连接 (保持蓝牙常连，推荐)",
+        "power_saving": "省电模式 (按需连线 / 定期同步)"
+      }
+    },
+    "linked_lock": {
+      "options": {
+        "auto": "自动关联 (响应任何匹配的门锁)"
+      }
+    },
+    "device_selection": {
+      "options": {
+        "manual": "手动输入蓝牙 MAC 地址..."
       }
     }
   }

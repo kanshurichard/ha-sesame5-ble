@@ -75,12 +75,17 @@ class TestSesameTouch(unittest.IsolatedAsyncioTestCase):
 
     def test_format_passcode_add_validation(self):
         """Test validation for invalid passcodes."""
-        with self.assertRaises(ValueError):
+        with self.assertRaises(ValueError) as ctx:
             format_passcode_add_payload("123")  # too short (< 4)
-        with self.assertRaises(ValueError):
+        self.assertNotIn("123", str(ctx.exception))
+
+        with self.assertRaises(ValueError) as ctx:
             format_passcode_add_payload("12345678901234567")  # too long (> 16)
-        with self.assertRaises(ValueError):
+        self.assertNotIn("12345678901234567", str(ctx.exception))
+
+        with self.assertRaises(ValueError) as ctx:
             format_passcode_add_payload("abcd")  # non-digit
+        self.assertNotIn("abcd", str(ctx.exception))
 
     def test_format_passcode_delete_payload(self):
         """Test formatting of SSM_OS3_PASSCODE_DELETE payload."""
@@ -91,6 +96,11 @@ class TestSesameTouch(unittest.IsolatedAsyncioTestCase):
         # By hex string
         payload_hex = format_passcode_delete_payload("01020304")
         self.assertEqual(payload_hex, bytes([1, 2, 3, 4]))
+
+        # Invalid format should raise ValueError without leaking the passcode in exception message
+        with self.assertRaises(ValueError) as ctx:
+            format_passcode_delete_payload("invalid_code_xyz")
+        self.assertNotIn("invalid_code_xyz", str(ctx.exception))
 
     def test_parse_passcode_records(self):
         """Test parsing of SSM_OS3_PASSCODE_NOTIFY record stream."""
@@ -124,6 +134,135 @@ class TestSesameTouch(unittest.IsolatedAsyncioTestCase):
             model_id=ProductModel.SESAME_5.value,
         )
         self.assertFalse(device_lock.is_keypad)
+
+    def test_entity_translation_keys(self):
+        """Test sensors and binary sensors have translation_key set for localization."""
+        from custom_components.sesame5_ble.sensor import (
+            Sesame5BatterySensor,
+            Sesame5VoltageSensor,
+            Sesame5PositionSensor,
+            Sesame5LastOperationSensor,
+            Sesame5LastOperationTimeSensor,
+            Sesame5LastUnlockOperationSensor,
+            Sesame5LastUnlockTimeSensor,
+            Sesame5LastLockOperationSensor,
+            Sesame5LastLockTimeSensor,
+            SesameTouchPasswordCountSensor,
+            SesameTouchFingerprintCountSensor,
+            SesameTouchCardCountSensor,
+        )
+        from custom_components.sesame5_ble.binary_sensor import (
+            Sesame5DoorBinarySensor,
+            Sesame5BatteryCriticalBinarySensor,
+            Sesame5MovingBinarySensor,
+        )
+
+        coord = MagicMock()
+        coord.address = "AA:BB:CC:DD:EE:FF"
+        entry = MagicMock()
+        entry.data = {}
+
+        # Sensors
+        self.assertEqual(Sesame5BatterySensor(coord, entry).translation_key, "battery")
+        self.assertEqual(Sesame5VoltageSensor(coord, entry).translation_key, "voltage")
+        self.assertEqual(Sesame5PositionSensor(coord, entry).translation_key, "angle")
+
+        # Operation sensors (backwards-compatible unique IDs & translation keys)
+        last_op = Sesame5LastOperationSensor(coord, entry)
+        self.assertEqual(last_op.translation_key, "last_operation")
+        self.assertEqual(last_op.unique_id, "AA:BB:CC:DD:EE:FF_last_operation")
+
+        last_op_time = Sesame5LastOperationTimeSensor(coord, entry)
+        self.assertEqual(last_op_time.translation_key, "last_operation_time")
+        self.assertEqual(last_op_time.unique_id, "AA:BB:CC:DD:EE:FF_last_operation_time")
+        self.assertIsNone(getattr(last_op_time, "entity_category", None))
+
+        last_unlock = Sesame5LastUnlockOperationSensor(coord, entry)
+        self.assertEqual(last_unlock.translation_key, "last_unlock_operation")
+        self.assertEqual(last_unlock.unique_id, "AA:BB:CC:DD:EE:FF_last_unlock_operation")
+
+        last_unlock_time = Sesame5LastUnlockTimeSensor(coord, entry)
+        self.assertEqual(last_unlock_time.translation_key, "last_unlock_time")
+        self.assertEqual(last_unlock_time.unique_id, "AA:BB:CC:DD:EE:FF_last_unlock_time")
+        self.assertIsNone(getattr(last_unlock_time, "entity_category", None))
+
+        last_lock = Sesame5LastLockOperationSensor(coord, entry)
+        self.assertEqual(last_lock.translation_key, "last_lock_operation")
+        self.assertEqual(last_lock.unique_id, "AA:BB:CC:DD:EE:FF_last_lock_operation")
+
+        last_lock_time = Sesame5LastLockTimeSensor(coord, entry)
+        self.assertEqual(last_lock_time.translation_key, "last_lock_time")
+        self.assertEqual(last_lock_time.unique_id, "AA:BB:CC:DD:EE:FF_last_lock_time")
+        self.assertIsNone(getattr(last_lock_time, "entity_category", None))
+
+        self.assertEqual(SesameTouchPasswordCountSensor(coord, entry).translation_key, "password_count")
+        self.assertEqual(SesameTouchFingerprintCountSensor(coord, entry).translation_key, "fingerprint_count")
+        self.assertEqual(SesameTouchCardCountSensor(coord, entry).translation_key, "card_count")
+
+        # Binary sensors
+        self.assertEqual(Sesame5DoorBinarySensor(coord, entry).translation_key, "door")
+        self.assertEqual(Sesame5BatteryCriticalBinarySensor(coord, entry).translation_key, "battery_critical")
+        self.assertEqual(Sesame5MovingBinarySensor(coord, entry).translation_key, "moving")
+
+    def test_selector_translation_parity(self):
+        """Test selector translations exist and match in strings.json, en.json, zh-Hans.json, ja.json."""
+        import json
+        from pathlib import Path
+
+        base_dir = Path(__file__).parent.parent / "custom_components" / "sesame5_ble"
+        files = {
+            "strings": base_dir / "strings.json",
+            "en": base_dir / "translations" / "en.json",
+            "zh-Hans": base_dir / "translations" / "zh-Hans.json",
+            "ja": base_dir / "translations" / "ja.json",
+        }
+
+        data = {}
+        for name, path in files.items():
+            self.assertTrue(path.exists(), f"Missing {path}")
+            with open(path, "r", encoding="utf-8") as f:
+                data[name] = json.load(f)
+
+        # Check selector keys
+        for name, doc in data.items():
+            self.assertIn("selector", doc, f"Missing selector section in {name}")
+            self.assertIn("connection_mode", doc["selector"], f"Missing connection_mode in {name}")
+            self.assertIn("realtime", doc["selector"]["connection_mode"]["options"], f"Missing realtime in {name}")
+            self.assertIn("power_saving", doc["selector"]["connection_mode"]["options"], f"Missing power_saving in {name}")
+            self.assertIn("linked_lock", doc["selector"], f"Missing linked_lock in {name}")
+            self.assertIn("auto", doc["selector"]["linked_lock"]["options"], f"Missing auto in {name}")
+            self.assertIn("device_selection", doc["selector"], f"Missing device_selection in {name}")
+            self.assertIn("manual", doc["selector"]["device_selection"]["options"], f"Missing manual in {name}")
+
+            # Check no_devices step and bluetooth_not_available abort
+            self.assertIn("no_devices", doc["config"]["step"], f"Missing no_devices step in {name}")
+            self.assertIn("manual", doc["config"]["step"]["no_devices"]["menu_options"], f"Missing manual in no_devices in {name}")
+            self.assertIn("retry", doc["config"]["step"]["no_devices"]["menu_options"], f"Missing retry in no_devices in {name}")
+            self.assertIn("bluetooth_not_available", doc["config"]["abort"], f"Missing bluetooth_not_available abort in {name}")
+
+    async def test_operation_sensors_state_restoration(self):
+        """Test sensors restore last state on HA restart when live data is not yet available."""
+        from custom_components.sesame5_ble.sensor import (
+            Sesame5LastOperationSensor,
+            Sesame5LastUnlockOperationSensor,
+            Sesame5LastLockOperationSensor,
+        )
+
+        coord = MagicMock()
+        coord.data = None
+        coord.address = "AA:BB:CC:DD:EE:FF"
+        entry = MagicMock()
+        entry.data = {}
+
+        sensor = Sesame5LastUnlockOperationSensor(coord, entry)
+        mock_last_state = MagicMock()
+        mock_last_state.state = "门外指纹解锁"
+        mock_last_state.attributes = {"source": "outside"}
+        sensor.async_get_last_state = AsyncMock(return_value=mock_last_state)
+
+        await sensor.async_added_to_hass()
+        self.assertEqual(sensor.native_value, "门外指纹解锁")
+        self.assertEqual(sensor.extra_state_attributes.get("source"), "outside")
 
 
 class TestCoordinatorPasscodes(unittest.IsolatedAsyncioTestCase):
@@ -387,6 +526,86 @@ class TestCoordinatorPasscodes(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(device.passcode_count, 1)
         self.assertEqual(len(device.passcodes), 1)
         self.assertEqual(device.passcodes[0]["passcode"], "1234")
+
+    async def test_config_flow_candidate_filtering_and_abort(self):
+        """Test config flow filters already configured devices and aborts on duplicates."""
+        from custom_components.sesame5_ble.config_flow import Sesame5ConfigFlow
+        from custom_components.sesame5_ble.const import CONF_ADDRESS
+
+        flow = Sesame5ConfigFlow()
+        flow.hass = self.hass
+
+        entry_a = MagicMock()
+        entry_a.unique_id = "AA:BB:CC:DD:EE:01"
+        entry_a.data = {CONF_ADDRESS: "AA:BB:CC:DD:EE:01"}
+        self.hass.config_entries.async_entries.return_value = [entry_a]
+
+        # 1. Scanned devices contain both device A (configured) and device B (unconfigured)
+        scanned_devices = [
+            {"address": "AA:BB:CC:DD:EE:01", "name": "Sesame 5 (AA:BB:CC:DD:EE:01)", "rssi": -60, "model": "Sesame 5", "model_id": 0, "device_id": "1"},
+            {"address": "AA:BB:CC:DD:EE:02", "name": "Sesame 5 (AA:BB:CC:DD:EE:02)", "rssi": -70, "model": "Sesame 5", "model_id": 0, "device_id": "2"},
+        ]
+
+        with patch("custom_components.sesame5_ble.config_flow._scan_sesame5_devices", return_value=scanned_devices):
+            with patch.object(flow, "_async_current_ids", return_value={"AA:BB:CC:DD:EE:01"}):
+                result = await flow.async_step_user()
+                self.assertEqual(result["type"], "form")
+                self.assertEqual(result["step_id"], "user")
+
+                # Discovered devices dictionary should ONLY contain device B (AA:BB:CC:DD:EE:02)
+                self.assertNotIn("AA:BB:CC:DD:EE:01", flow._discovered_devices)
+                self.assertIn("AA:BB:CC:DD:EE:02", flow._discovered_devices)
+
+        # 2. When ALL scanned devices are already configured (or none found), show no_devices menu
+        scanned_only_a = [
+            {"address": "AA:BB:CC:DD:EE:01", "name": "Sesame 5 (AA:BB:CC:DD:EE:01)", "rssi": -60, "model": "Sesame 5", "model_id": 0, "device_id": "1"},
+        ]
+        flow2 = Sesame5ConfigFlow()
+        flow2.hass = self.hass
+        with patch("custom_components.sesame5_ble.config_flow._scan_sesame5_devices", return_value=scanned_only_a):
+            with patch.object(flow2, "_async_current_ids", return_value={"AA:BB:CC:DD:EE:01"}):
+                result2 = await flow2.async_step_user()
+                self.assertEqual(result2["type"], "menu")
+                self.assertEqual(result2["step_id"], "no_devices")
+                self.assertEqual(result2["menu_options"], ["manual", "retry"])
+
+        # 3. If user manually enters an already configured MAC, abort immediately
+        flow3 = Sesame5ConfigFlow()
+        flow3.hass = self.hass
+        flow3._abort_if_unique_id_configured = MagicMock(side_effect=Exception("ABORT_CONFIGURED"))
+        with self.assertRaises(Exception) as ctx:
+            await flow3.async_step_manual({CONF_ADDRESS: "AA:BB:CC:DD:EE:01"})
+        self.assertIn("ABORT_CONFIGURED", str(ctx.exception))
+
+        # 4. If HA has NO Bluetooth adapters, immediately abort with bluetooth_not_available
+        flow4 = Sesame5ConfigFlow()
+        flow4.hass = self.hass
+        with patch("custom_components.sesame5_ble.config_flow.async_scanner_count", return_value=0):
+            result4 = await flow4.async_step_user()
+            self.assertEqual(result4["type"], "abort")
+            self.assertEqual(result4["reason"], "bluetooth_not_available")
+
+            result4_manual = await flow4.async_step_manual()
+            self.assertEqual(result4_manual["type"], "abort")
+            self.assertEqual(result4_manual["reason"], "bluetooth_not_available")
+
+        # 5. Test retry step triggers active BLE scan and returns to user step
+        flow5 = Sesame5ConfigFlow()
+        flow5.hass = self.hass
+        with patch("custom_components.sesame5_ble.config_flow.async_request_active_scan", new_callable=AsyncMock) as mock_scan:
+            with patch.object(flow5, "async_step_user", new_callable=AsyncMock) as mock_user:
+                await flow5.async_step_retry()
+                mock_scan.assert_called_once_with(self.hass)
+                mock_user.assert_called_once()
+
+        # 6. Test manual step model dropdown selection and model_id mapping
+        flow6 = Sesame5ConfigFlow()
+        flow6.hass = self.hass
+        with patch.object(flow6, "async_step_auth", new_callable=AsyncMock) as mock_auth:
+            await flow6.async_step_manual({CONF_ADDRESS: "AA:BB:CC:DD:EE:99", "model": "Sesame Touch 2 Pro"})
+            self.assertEqual(flow6._selected_model, "Sesame Touch 2 Pro")
+            self.assertEqual(flow6._selected_model_id, ProductModel.SESAME_TOUCH_2_PRO.value)
+            mock_auth.assert_called_once()
 
 
 if __name__ == "__main__":

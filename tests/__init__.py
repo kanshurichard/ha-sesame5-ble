@@ -1,7 +1,7 @@
 """Mock Home Assistant, Bleak, and Cryptography modules for standalone unit testing."""
 
 import sys
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock
 
 # Try importing real cryptography if available, otherwise mock
 try:
@@ -42,6 +42,7 @@ for mod in [
     "homeassistant.helpers.device_registry",
     "homeassistant.helpers.dispatcher",
     "homeassistant.helpers.event",
+    "homeassistant.helpers.restore_state",
     "homeassistant.helpers.config_validation",
     "homeassistant.helpers.selector",
     "voluptuous",
@@ -73,7 +74,116 @@ class MockDataUpdateCoordinator:
         self.data = data
 
 
+class MockEntity:
+    _attr_has_entity_name = False
+    _attr_translation_key = None
+    _attr_name = None
+    _attr_unique_id = None
+
+    @property
+    def unique_id(self):
+        return getattr(self, "_attr_unique_id", None)
+
+    @property
+    def translation_key(self):
+        return getattr(self, "_attr_translation_key", None)
+
+    @property
+    def name(self):
+        return getattr(self, "_attr_name", None)
+
+
+class MockSensorEntity(MockEntity):
+    pass
+
+
+class MockBinarySensorEntity(MockEntity):
+    pass
+
+
+class MockLockEntity(MockEntity):
+    pass
+
+
+class MockRestoreEntity:
+    async def async_added_to_hass(self):
+        pass
+
+    async def async_get_last_state(self):
+        return None
+
+
+class MockCoordinatorEntity(MockEntity):
+    def __init__(self, coordinator=None):
+        self.coordinator = coordinator
+        self.hass = getattr(coordinator, "hass", None) if coordinator else None
+        self.entity_id = f"binary_sensor.test_{getattr(self, '_attr_translation_key', 'entity')}"
+
+    def __class_getitem__(cls, item):
+        return cls
+
+    def _handle_coordinator_update(self):
+        pass
+
+    def async_write_ha_state(self):
+        pass
+
+
+from enum import Enum
+
+
+class MockRegistryEntryHider(str, Enum):
+    INTEGRATION = "integration"
+    USER = "user"
+
+
+class MockRegistryEntry:
+    def __init__(self, entity_id, hidden_by=None, options=None):
+        self.entity_id = entity_id
+        self.hidden_by = hidden_by
+        self.options = options or {}
+
+
+class MockEntityRegistry:
+    def __init__(self):
+        self.entities = {}
+
+    def async_get(self, entity_id):
+        return self.entities.get(entity_id)
+
+    def async_update_entity(self, entity_id, *, hidden_by=None, **kwargs):
+        if entity_id not in self.entities:
+            self.entities[entity_id] = MockRegistryEntry(entity_id)
+        entry = self.entities[entity_id]
+        entry.hidden_by = hidden_by
+        return entry
+
+    def async_update_entity_options(self, entity_id, domain, options):
+        if entity_id not in self.entities:
+            self.entities[entity_id] = MockRegistryEntry(entity_id)
+        entry = self.entities[entity_id]
+        new_opts = dict(entry.options or {})
+        if options is None:
+            new_opts.pop(domain, None)
+        else:
+            new_opts[domain] = options
+        entry.options = new_opts
+        return entry
+
+
+mock_entity_registry = MockEntityRegistry()
+sys.modules["homeassistant.helpers.entity_registry"] = MagicMock()
+sys.modules["homeassistant.helpers.entity_registry"].RegistryEntryHider = MockRegistryEntryHider
+sys.modules["homeassistant.helpers.entity_registry"].async_get = MagicMock(return_value=mock_entity_registry)
+sys.modules["homeassistant.helpers"].entity_registry = sys.modules["homeassistant.helpers.entity_registry"]
+
+
 sys.modules["homeassistant.helpers.update_coordinator"].DataUpdateCoordinator = MockDataUpdateCoordinator
+sys.modules["homeassistant.helpers.update_coordinator"].CoordinatorEntity = MockCoordinatorEntity
+sys.modules["homeassistant.components.sensor"].SensorEntity = MockSensorEntity
+sys.modules["homeassistant.components.binary_sensor"].BinarySensorEntity = MockBinarySensorEntity
+sys.modules["homeassistant.components.lock"].LockEntity = MockLockEntity
+sys.modules["homeassistant.helpers.restore_state"].RestoreEntity = MockRestoreEntity
 
 
 class MockOptionsFlow:
@@ -89,5 +199,46 @@ class MockOptionsFlow:
         return {"type": "create_entry", "title": title, "data": data}
 
 
+class MockConfigFlow:
+    def __init_subclass__(cls, domain=None, **kwargs):
+        super().__init_subclass__(**kwargs)
+
+    async def async_set_unique_id(self, unique_id=None, raise_on_progress=True):
+        self.unique_id = unique_id
+
+    def _abort_if_unique_id_configured(self, updates=None, reload_on_update=True):
+        pass
+
+    def _async_current_ids(self, include_ignore=True):
+        return set()
+
+    def _async_current_entries(self, include_ignore=True):
+        return []
+
+    def async_show_form(self, step_id=None, data_schema=None, errors=None, description_placeholders=None):
+        return {
+            "type": "form",
+            "step_id": step_id,
+            "data_schema": data_schema,
+            "errors": errors,
+        }
+
+    def async_create_entry(self, title="", data=None):
+        return {"type": "create_entry", "title": title, "data": data}
+
+    def async_abort(self, reason=""):
+        return {"type": "abort", "reason": reason}
+
+    def async_show_menu(self, step_id=None, menu_options=None, description_placeholders=None):
+        return {
+            "type": "menu",
+            "step_id": step_id,
+            "menu_options": menu_options,
+        }
+
+
 sys.modules["homeassistant"].config_entries = sys.modules["homeassistant.config_entries"]
 sys.modules["homeassistant.config_entries"].OptionsFlow = MockOptionsFlow
+sys.modules["homeassistant.config_entries"].ConfigFlow = MockConfigFlow
+sys.modules["homeassistant.components.bluetooth"].async_scanner_count = MagicMock(return_value=1)
+sys.modules["homeassistant.components.bluetooth"].async_request_active_scan = AsyncMock()

@@ -35,6 +35,14 @@
           "history_tag": "History Tag (Name shown in App log)",
           "read_only": "Read-only mode (Disables remote passcode management)"
         }
+      },
+      "no_devices": {
+        "title": "No Bluetooth Devices Found",
+        "description": "Could not discover any nearby Sesame Bluetooth advertisements (already configured devices have been excluded).\n\nPlease check:\n1. The device is within Bluetooth range and powered on.\n2. If the device was idle or sleeping, wake it in the Sesame mobile app or tap the lock.\n\nWould you like to manually enter a Bluetooth MAC address to attempt adding?",
+        "menu_options": {
+          "manual": "Enter Bluetooth MAC manually...",
+          "retry": "Rescan for Bluetooth devices"
+        }
       }
     },
     "error": {
@@ -44,7 +52,8 @@
       "device_not_found": "Selected device was not found."
     },
     "abort": {
-      "already_configured": "This Sesame device is already configured."
+      "already_configured": "This Sesame device is already configured.",
+      "bluetooth_not_available": "No Bluetooth adapter or remote proxy configured. Home Assistant must have at least one Bluetooth adapter or ESPHome Bluetooth proxy to connect to Sesame devices."
     }
   },
   "options": {
@@ -85,6 +94,18 @@
       },
       "last_operation_time": {
         "name": "Last Operation Time"
+      },
+      "last_unlock_operation": {
+        "name": "Last Unlock Operation"
+      },
+      "last_unlock_time": {
+        "name": "Last Unlock Time"
+      },
+      "last_lock_operation": {
+        "name": "Last Lock Operation"
+      },
+      "last_lock_time": {
+        "name": "Last Lock Time"
       },
       "password_count": {
         "name": "Password Count"
@@ -169,6 +190,24 @@
           "name": "Bluetooth MAC Address",
           "description": "Bluetooth MAC address of the keypad (optional)."
         }
+      }
+    }
+  },
+  "selector": {
+    "connection_mode": {
+      "options": {
+        "realtime": "Real-time (Persistent BLE connection, recommended)",
+        "power_saving": "Power-saving (On-demand connection / periodic sync)"
+      }
+    },
+    "linked_lock": {
+      "options": {
+        "auto": "Auto-bind (Any matched Sesame lock)"
+      }
+    },
+    "device_selection": {
+      "options": {
+        "manual": "Enter Bluetooth MAC manually..."
       }
     }
   }
