@@ -617,21 +617,15 @@ def parse_credential_records(payload: bytes) -> list[dict[str, Any]]:
                 break
             name_bytes = rest[3 + id_len : 3 + id_len + name_len]
 
-            # Format PIN string from digit bytes if all bytes <= 9
-            if id_len > 0 and all(b <= 9 for b in id_bytes):
-                id_str = "".join(str(b) for b in id_bytes)
-            else:
-                id_str = id_bytes.hex()
+            id_hex = id_bytes.hex()
             name_str = name_bytes.decode("utf-8", errors="ignore").strip()
 
             records.append(
                 {
                     "type": card_type,
-                    "id": id_str,
-                    "id_hex": id_bytes.hex(),
+                    "id_hex": id_hex,
                     "name": name_str,
-                    "passcode": id_str,
-                    "passcode_id": id_bytes.hex(),
+                    "passcode_id": id_hex,
                 }
             )
             record_size = 1 + 1 + id_len + 1 + name_len

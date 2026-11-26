@@ -10,6 +10,7 @@ from homeassistant.const import CONF_ADDRESS, Platform
 from homeassistant.core import HomeAssistant, ServiceCall, ServiceResponse
 from homeassistant.exceptions import ConfigEntryNotReady, HomeAssistantError
 from homeassistant.helpers import config_validation as cv, device_registry as dr
+from homeassistant.helpers.service import async_register_admin_service
 
 try:
     from homeassistant.core import SupportsResponse
@@ -167,7 +168,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: Sesame5ConfigEntry) -> b
                     one_time=one_time,
                 )
 
-        hass.services.async_register(
+        async_register_admin_service(
+            hass,
             DOMAIN,
             SERVICE_ADD_PASSCODE,
             _handle_add_passcode,
@@ -194,7 +196,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: Sesame5ConfigEntry) -> b
             for coord in coordinators:
                 await coord.async_delete_passcode(passcode)
 
-        hass.services.async_register(
+        async_register_admin_service(
+            hass,
             DOMAIN,
             SERVICE_DELETE_PASSCODE,
             _handle_delete_passcode,
@@ -217,7 +220,16 @@ async def async_setup_entry(hass: HomeAssistant, entry: Sesame5ConfigEntry) -> b
             results: dict[str, Any] = {}
             for coord in coordinators:
                 passcodes = await coord.async_get_passcodes()
-                results[coord.address] = passcodes
+                results[coord.address] = [
+                    {
+                        "type": record.get("type"),
+                        "name": record.get("name"),
+                        "passcode_id": record.get("passcode_id")
+                        if "passcode_id" in record
+                        else record.get("id_hex"),
+                    }
+                    for record in passcodes
+                ]
             return {"devices": results}
 
         kwargs: dict[str, Any] = {
@@ -231,7 +243,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: Sesame5ConfigEntry) -> b
         if SUPPORTS_RESPONSE_OPTIONAL is not None:
             kwargs["supports_response"] = SUPPORTS_RESPONSE_OPTIONAL
 
-        hass.services.async_register(
+        async_register_admin_service(
+            hass,
             DOMAIN,
             SERVICE_GET_PASSCODES,
             _handle_get_passcodes,

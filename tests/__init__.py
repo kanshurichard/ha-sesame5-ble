@@ -45,6 +45,7 @@ for mod in [
     "homeassistant.helpers.restore_state",
     "homeassistant.helpers.config_validation",
     "homeassistant.helpers.selector",
+    "homeassistant.helpers.service",
     "voluptuous",
     "bleak",
     "bleak.backends",
@@ -72,6 +73,9 @@ class MockDataUpdateCoordinator:
 
     def async_set_updated_data(self, data):
         self.data = data
+
+    async def async_config_entry_first_refresh(self):
+        return None
 
 
 class MockEntity:
@@ -176,6 +180,9 @@ sys.modules["homeassistant.helpers.entity_registry"] = MagicMock()
 sys.modules["homeassistant.helpers.entity_registry"].RegistryEntryHider = MockRegistryEntryHider
 sys.modules["homeassistant.helpers.entity_registry"].async_get = MagicMock(return_value=mock_entity_registry)
 sys.modules["homeassistant.helpers"].entity_registry = sys.modules["homeassistant.helpers.entity_registry"]
+sys.modules["homeassistant.helpers"].service = sys.modules["homeassistant.helpers.service"]
+sys.modules["homeassistant.helpers"].config_validation = sys.modules["homeassistant.helpers.config_validation"]
+sys.modules["homeassistant.helpers"].device_registry = sys.modules["homeassistant.helpers.device_registry"]
 
 
 sys.modules["homeassistant.helpers.update_coordinator"].DataUpdateCoordinator = MockDataUpdateCoordinator

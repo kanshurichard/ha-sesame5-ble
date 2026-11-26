@@ -103,15 +103,17 @@ class TestSesameTouch(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn("invalid_code_xyz", str(ctx.exception))
 
     def test_parse_passcode_records(self):
-        """Test parsing of SSM_OS3_PASSCODE_NOTIFY record stream."""
+        """Test parsing of SSM_OS3_PASSCODE_NOTIFY record stream (without clear PIN digits)."""
         # Record 1: type=0, idLen=4, id=[1,2,3,4], nameLen=4, name="Test"
         rec1 = bytes([0, 4, 1, 2, 3, 4, 4]) + b"Test"
         records = parse_passcode_records(rec1)
 
         self.assertEqual(len(records), 1)
-        self.assertEqual(records[0]["passcode"], "1234")
+        self.assertNotIn("passcode", records[0])
+        self.assertNotIn("id", records[0])
         self.assertEqual(records[0]["name"], "Test")
         self.assertEqual(records[0]["passcode_id"], "01020304")
+        self.assertEqual(records[0]["id_hex"], "01020304")
 
     def test_device_model_classification(self):
         """Test model classification for lock vs keypad."""
@@ -525,7 +527,9 @@ class TestCoordinatorPasscodes(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(device.passcode_count, 1)
         self.assertEqual(len(device.passcodes), 1)
-        self.assertEqual(device.passcodes[0]["passcode"], "1234")
+        self.assertNotIn("passcode", device.passcodes[0])
+        self.assertEqual(device.passcodes[0]["passcode_id"], "01020304")
+        self.assertEqual(device.passcodes[0]["name"], "Home")
 
     async def test_config_flow_candidate_filtering_and_abort(self):
         """Test config flow filters already configured devices and aborts on duplicates."""
@@ -606,6 +610,97 @@ class TestCoordinatorPasscodes(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(flow6._selected_model, "Sesame Touch 2 Pro")
             self.assertEqual(flow6._selected_model_id, ProductModel.SESAME_TOUCH_2_PRO.value)
             mock_auth.assert_called_once()
+
+    async def test_admin_services_and_sanitized_get_passcodes(self):
+        """Test passcode services are admin-only and get_passcodes omits clear PIN digits."""
+        import custom_components.sesame5_ble as init_mod
+        from custom_components.sesame5_ble.const import (
+            CONF_MODEL_ID,
+            CONF_SECRET_KEY,
+            DOMAIN,
+            SERVICE_ADD_PASSCODE,
+            SERVICE_DELETE_PASSCODE,
+            SERVICE_GET_PASSCODES,
+        )
+
+        # 1. Verify coordinator.async_get_passcodes strips any clear PIN digits
+        self.device.request_passcodes = AsyncMock(
+            return_value=[
+                {
+                    "type": 0,
+                    "id": "1234",
+                    "id_hex": "01020304",
+                    "name": "Guest",
+                    "passcode": "1234",
+                    "passcode_id": "01020304",
+                }
+            ]
+        )
+        sanitized = await self.coordinator.async_get_passcodes()
+        self.assertEqual(
+            sanitized,
+            [{"type": 0, "name": "Guest", "passcode_id": "01020304"}],
+        )
+        self.assertNotIn("passcode", sanitized[0])
+        self.assertNotIn("id", sanitized[0])
+
+        # 2. Verify async_setup_entry registers all 3 passcode services via async_register_admin_service
+        mock_hass = MagicMock()
+        mock_hass.services.has_service.return_value = False
+        mock_hass.services.async_register = MagicMock()
+        mock_hass.config_entries.async_forward_entry_setups = AsyncMock()
+        mock_hass.config_entries.async_entries.return_value = []
+
+        mock_entry = MagicMock()
+        mock_entry.data = {
+            "address": "AA:BB:CC:DD:EE:FF",
+            CONF_SECRET_KEY: "00" * 16,
+            CONF_MODEL_ID: ProductModel.SESAME_TOUCH_2.value,
+        }
+        mock_entry.options = {}
+
+        registered_handlers = {}
+
+        def _capture_admin_service(hass_arg, domain, service, handler, **kwargs):
+            registered_handlers[service] = (handler, kwargs)
+
+        with patch("custom_components.sesame5_ble.Sesame5Device", return_value=self.device):
+            with patch("custom_components.sesame5_ble.Sesame5Coordinator", return_value=self.coordinator):
+                with patch.object(self.coordinator, "async_config_entry_first_refresh", new_callable=AsyncMock):
+                    with patch(
+                        "custom_components.sesame5_ble.async_register_admin_service",
+                        side_effect=_capture_admin_service,
+                    ) as mock_admin_reg:
+                        mock_entry.runtime_data = self.coordinator
+                        mock_hass.config_entries.async_entries.return_value = [mock_entry]
+                        result = await init_mod.async_setup_entry(mock_hass, mock_entry)
+
+        self.assertTrue(result)
+        # Must NEVER register passcode services with plain non-admin async_register
+        mock_hass.services.async_register.assert_not_called()
+        self.assertEqual(mock_admin_reg.call_count, 3)
+        self.assertIn(SERVICE_ADD_PASSCODE, registered_handlers)
+        self.assertIn(SERVICE_DELETE_PASSCODE, registered_handlers)
+        self.assertIn(SERVICE_GET_PASSCODES, registered_handlers)
+
+        # 3. Call the registered get_passcodes handler and confirm response omits clear PINs
+        get_handler, _ = registered_handlers[SERVICE_GET_PASSCODES]
+        mock_call = MagicMock()
+        mock_call.data = {"address": "AA:BB:CC:DD:EE:FF"}
+        response = await get_handler(mock_call)
+        self.assertEqual(
+            response,
+            {
+                "devices": {
+                    "AA:BB:CC:DD:EE:FF": [
+                        {"type": 0, "name": "Guest", "passcode_id": "01020304"}
+                    ]
+                }
+            },
+        )
+        entry_resp = response["devices"]["AA:BB:CC:DD:EE:FF"][0]
+        self.assertNotIn("passcode", entry_resp)
+        self.assertNotIn("id", entry_resp)
 
 
 if __name__ == "__main__":

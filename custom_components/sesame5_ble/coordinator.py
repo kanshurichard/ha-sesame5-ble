@@ -477,10 +477,20 @@ class Sesame5Coordinator(DataUpdateCoordinator[Sesame5State]):
             self._schedule_power_saving_disconnect()
 
     async def async_get_passcodes(self) -> list[dict[str, Any]]:
-        """Return list of passcodes registered on the device."""
+        """Return list of passcodes registered on the device without clear PIN digits."""
         try:
             await self._ensure_connected()
-            return await self._device.request_passcodes()
+            records = await self._device.request_passcodes()
+            return [
+                {
+                    "type": record.get("type"),
+                    "name": record.get("name"),
+                    "passcode_id": record.get("passcode_id")
+                    if "passcode_id" in record
+                    else record.get("id_hex"),
+                }
+                for record in records
+            ]
         finally:
             self._schedule_power_saving_disconnect()
 
