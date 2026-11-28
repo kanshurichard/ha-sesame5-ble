@@ -162,7 +162,7 @@
     },
     "delete_passcode": {
       "name": "暗証番号の削除",
-      "description": "セサミタッチ / キーパッドから指定の暗証番号を削除します。",
+      "description": "名前または暗証番号を指定して、セサミタッチ / キーパッドから暗証番号を削除します。",
       "fields": {
         "device_id": {
           "name": "デバイス",
@@ -172,9 +172,13 @@
           "name": "Bluetooth MAC アドレス",
           "description": "キーパッドの Bluetooth MAC アドレス（任意）。"
         },
+        "name": {
+          "name": "暗証番号の名前",
+          "description": "削除する暗証番号の登録名（get_passcodes で取得可能）。"
+        },
         "passcode": {
-          "name": "暗証番号またはID",
-          "description": "削除する暗証番号（例: 123456）または 16進数ID。"
+          "name": "暗証番号または名前",
+          "description": "削除する暗証番号（4〜16桁）または登録名。"
         }
       }
     },

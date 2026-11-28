@@ -1,3 +1,7 @@
+# Copyright (c) 2026 kanshurichard
+# Portions based on ha-sesame-ble (Copyright (c) 2026 ngoc-minh-do) and gomalock (Copyright (c) 2026 meronepy).
+# Licensed under the MIT License. See LICENSE and NOTICE in the repository root for details.
+
 """Cryptographic primitives for SesameOS 3 BLE protocol.
 
 Implements AES-CMAC session key derivation and AES-CCM authenticated encryption/decryption

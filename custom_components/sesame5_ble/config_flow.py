@@ -1,3 +1,7 @@
+# Copyright (c) 2026 kanshurichard
+# Portions based on ha-sesame-ble (Copyright (c) 2026 ngoc-minh-do) and gomalock (Copyright (c) 2026 meronepy).
+# Licensed under the MIT License. See LICENSE and NOTICE in the repository root for details.
+
 """Config flow for Sesame 5 BLE integration."""
 
 from __future__ import annotations
@@ -21,6 +25,9 @@ from homeassistant.helpers.selector import (
     SelectSelector,
     SelectSelectorConfig,
     SelectSelectorMode,
+    TextSelector,
+    TextSelectorConfig,
+    TextSelectorType,
 )
 
 from .const import (
@@ -371,7 +378,9 @@ class Sesame5ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             lock_options = _get_configured_locks(self.hass, address)
             schema = vol.Schema(
                 {
-                    vol.Required(CONF_SECRET_KEY): str,
+                    vol.Required(CONF_SECRET_KEY): TextSelector(
+                        TextSelectorConfig(type=TextSelectorType.PASSWORD)
+                    ),
                     vol.Required(
                         CONF_LINKED_LOCK,
                         default=DEFAULT_LINKED_LOCK,
@@ -389,7 +398,9 @@ class Sesame5ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         else:
             schema = vol.Schema(
                 {
-                    vol.Required(CONF_SECRET_KEY): str,
+                    vol.Required(CONF_SECRET_KEY): TextSelector(
+                        TextSelectorConfig(type=TextSelectorType.PASSWORD)
+                    ),
                     vol.Required(
                         CONF_CONNECTION_MODE,
                         default=DEFAULT_CONNECTION_MODE,

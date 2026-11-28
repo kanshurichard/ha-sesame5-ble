@@ -162,7 +162,7 @@
     },
     "delete_passcode": {
       "name": "删除密码",
-      "description": "从 Sesame Touch / 密码键盘中删除指定密码。",
+      "description": "通过密码名称或密码数字从 Sesame Touch / 密码键盘中删除指定密码。",
       "fields": {
         "device_id": {
           "name": "设备",
@@ -172,9 +172,13 @@
           "name": "蓝牙 MAC 地址",
           "description": "键盘设备的蓝牙 MAC 地址（可选）。"
         },
+        "name": {
+          "name": "密码名称",
+          "description": "要删除的密码条目名称（可通过 get_passcodes 获取）。"
+        },
         "passcode": {
-          "name": "密码或密码ID",
-          "description": "要删除的密码数字（如 123456）或 16 进制 ID。"
+          "name": "密码数字或名称",
+          "description": "要删除的密码数字（4-16 位）或密码名称。"
         }
       }
     },

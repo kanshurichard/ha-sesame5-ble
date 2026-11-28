@@ -612,37 +612,32 @@ class TestCoordinatorPasscodes(unittest.IsolatedAsyncioTestCase):
             mock_auth.assert_called_once()
 
     async def test_admin_services_and_sanitized_get_passcodes(self):
-        """Test passcode services are admin-only and get_passcodes omits clear PIN digits."""
+        """Test passcode services are admin-only and get_passcodes returns only type and name."""
         import custom_components.sesame5_ble as init_mod
         from custom_components.sesame5_ble.const import (
             CONF_MODEL_ID,
             CONF_SECRET_KEY,
-            DOMAIN,
             SERVICE_ADD_PASSCODE,
             SERVICE_DELETE_PASSCODE,
             SERVICE_GET_PASSCODES,
         )
 
-        # 1. Verify coordinator.async_get_passcodes strips any clear PIN digits
+        # 1. Verify coordinator.async_get_passcodes returns ONLY type and name (no hex IDs or PINs)
         self.device.request_passcodes = AsyncMock(
             return_value=[
                 {
                     "type": 0,
-                    "id": "1234",
                     "id_hex": "01020304",
                     "name": "Guest",
-                    "passcode": "1234",
                     "passcode_id": "01020304",
                 }
             ]
         )
         sanitized = await self.coordinator.async_get_passcodes()
-        self.assertEqual(
-            sanitized,
-            [{"type": 0, "name": "Guest", "passcode_id": "01020304"}],
-        )
-        self.assertNotIn("passcode", sanitized[0])
-        self.assertNotIn("id", sanitized[0])
+        self.assertEqual(sanitized, [{"type": 0, "name": "Guest"}])
+        self.assertEqual(set(sanitized[0].keys()), {"type", "name"})
+        # Internal cache in coordinator still retains the ID for delete lookup
+        self.assertEqual(self.coordinator._passcode_cache[0]["id_hex"], "01020304")
 
         # 2. Verify async_setup_entry registers all 3 passcode services via async_register_admin_service
         mock_hass = MagicMock()
@@ -683,7 +678,7 @@ class TestCoordinatorPasscodes(unittest.IsolatedAsyncioTestCase):
         self.assertIn(SERVICE_DELETE_PASSCODE, registered_handlers)
         self.assertIn(SERVICE_GET_PASSCODES, registered_handlers)
 
-        # 3. Call the registered get_passcodes handler and confirm response omits clear PINs
+        # 3. Call the registered get_passcodes handler and confirm response omits ALL IDs and PINs
         get_handler, _ = registered_handlers[SERVICE_GET_PASSCODES]
         mock_call = MagicMock()
         mock_call.data = {"address": "AA:BB:CC:DD:EE:FF"}
@@ -692,15 +687,107 @@ class TestCoordinatorPasscodes(unittest.IsolatedAsyncioTestCase):
             response,
             {
                 "devices": {
-                    "AA:BB:CC:DD:EE:FF": [
-                        {"type": 0, "name": "Guest", "passcode_id": "01020304"}
-                    ]
+                    "AA:BB:CC:DD:EE:FF": [{"type": 0, "name": "Guest"}]
                 }
             },
         )
         entry_resp = response["devices"]["AA:BB:CC:DD:EE:FF"][0]
-        self.assertNotIn("passcode", entry_resp)
-        self.assertNotIn("id", entry_resp)
+        self.assertEqual(set(entry_resp.keys()), {"type", "name"})
+
+        # 4. Call delete_passcode service handler by name
+        delete_handler, _ = registered_handlers[SERVICE_DELETE_PASSCODE]
+        self.device.delete_passcode.reset_mock()
+        del_call = MagicMock()
+        del_call.data = {"address": "AA:BB:CC:DD:EE:FF", "name": "Guest"}
+        await delete_handler(del_call)
+        self.device.delete_passcode.assert_awaited_once_with("01020304")
+
+        # Calling delete_passcode service without name or passcode must raise HomeAssistantError
+        from homeassistant.exceptions import HomeAssistantError
+
+        empty_call = MagicMock()
+        empty_call.data = {"address": "AA:BB:CC:DD:EE:FF"}
+        with self.assertRaises(HomeAssistantError):
+            await delete_handler(empty_call)
+
+    async def test_delete_passcode_by_name_and_digits(self):
+        """Test deleting passcodes by name (cached & cold lookup), by PIN digits, and timer cleanup."""
+        from homeassistant.exceptions import HomeAssistantError
+
+        # 1. Cold cache lookup: deleting by name in `passcode` field triggers request_passcodes()
+        self.coordinator._passcode_cache = []
+        self.device.passcodes = []
+        self.device.request_passcodes = AsyncMock(
+            return_value=[{"type": 0, "id_hex": "01020304", "name": "Cleaner", "passcode_id": "01020304"}]
+        )
+        await self.coordinator.async_delete_passcode("Cleaner")
+        self.device.request_passcodes.assert_awaited_once()
+        self.device.delete_passcode.assert_awaited_once_with("01020304")
+        # Cache should now have evicted Cleaner
+        self.assertEqual(self.coordinator._passcode_cache, [])
+
+        # 2. Deleting a temporary passcode by name cancels its timer
+        self.device.delete_passcode.reset_mock()
+        mock_unsub = MagicMock()
+        self.coordinator._temp_passcodes["5678"] = {
+            "name": "TempGuest",
+            "duration": 600,
+            "one_time": False,
+            "unsub": mock_unsub,
+        }
+        self.coordinator._passcode_cache = [
+            {"type": 0, "id_hex": "05060708", "name": "TempGuest", "passcode_id": "05060708"}
+        ]
+        await self.coordinator.async_delete_passcode(name="TempGuest")
+        mock_unsub.assert_called_once()
+        self.assertNotIn("5678", self.coordinator._temp_passcodes)
+        self.device.delete_passcode.assert_awaited_once_with("05060708")
+
+        # 3. Deleting by raw PIN digits stays supported directly
+        self.device.delete_passcode.reset_mock()
+        self.device.request_passcodes.reset_mock()
+        await self.coordinator.async_delete_passcode("9988")
+        self.device.request_passcodes.assert_not_awaited()
+        self.device.delete_passcode.assert_awaited_once_with("9988")
+
+        # 4. Deleting a non-existent name raises HomeAssistantError
+        self.device.request_passcodes = AsyncMock(return_value=[])
+        with self.assertRaises(HomeAssistantError):
+            await self.coordinator.async_delete_passcode(name="NoSuchUser")
+
+    async def test_secret_key_uses_password_text_selector(self):
+        """Test both lock and keypad auth config flow steps mask secret_key using PASSWORD selector."""
+        from custom_components.sesame5_ble.config_flow import Sesame5ConfigFlow
+        from custom_components.sesame5_ble.const import CONF_SECRET_KEY
+        from homeassistant.helpers.selector import TextSelector, TextSelectorType
+
+        # 1. Standard lock auth step
+        flow_lock = Sesame5ConfigFlow()
+        flow_lock.hass = self.hass
+        flow_lock._selected_address = "AA:BB:CC:DD:EE:01"
+        flow_lock._selected_model = "Sesame 5"
+        flow_lock._selected_model_id = ProductModel.SESAME_5.value
+
+        res_lock = await flow_lock.async_step_auth()
+        self.assertEqual(res_lock["step_id"], "auth")
+        lock_schema = res_lock["data_schema"].schema
+        lock_selector = lock_schema[CONF_SECRET_KEY]
+        self.assertIsInstance(lock_selector, TextSelector)
+        self.assertEqual(lock_selector.config.type, TextSelectorType.PASSWORD)
+
+        # 2. Keypad auth step
+        flow_kp = Sesame5ConfigFlow()
+        flow_kp.hass = self.hass
+        flow_kp._selected_address = "AA:BB:CC:DD:EE:02"
+        flow_kp._selected_model = "Sesame Touch 2 Pro"
+        flow_kp._selected_model_id = ProductModel.SESAME_TOUCH_2_PRO.value
+
+        res_kp = await flow_kp.async_step_auth_keypad()
+        self.assertEqual(res_kp["step_id"], "auth_keypad")
+        kp_schema = res_kp["data_schema"].schema
+        kp_selector = kp_schema[CONF_SECRET_KEY]
+        self.assertIsInstance(kp_selector, TextSelector)
+        self.assertEqual(kp_selector.config.type, TextSelectorType.PASSWORD)
 
 
 if __name__ == "__main__":

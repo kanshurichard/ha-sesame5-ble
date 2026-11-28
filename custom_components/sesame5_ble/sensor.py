@@ -1,3 +1,7 @@
+# Copyright (c) 2026 kanshurichard
+# Portions based on ha-sesame-ble (Copyright (c) 2026 ngoc-minh-do) and gomalock (Copyright (c) 2026 meronepy).
+# Licensed under the MIT License. See LICENSE and NOTICE in the repository root for details.
+
 """Sensor entities for Sesame 5 BLE integration."""
 
 from __future__ import annotations

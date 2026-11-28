@@ -1,3 +1,7 @@
+# Copyright (c) 2026 kanshurichard
+# Portions based on ha-sesame-ble (Copyright (c) 2026 ngoc-minh-do) and gomalock (Copyright (c) 2026 meronepy).
+# Licensed under the MIT License. See LICENSE and NOTICE in the repository root for details.
+
 """The Sesame 5 BLE integration."""
 
 from __future__ import annotations
@@ -192,9 +196,18 @@ async def async_setup_entry(hass: HomeAssistant, entry: Sesame5ConfigEntry) -> b
             if not coordinators:
                 raise HomeAssistantError("未找到目标 Sesame 键盘设备，请在服务调用中指定 device_id 或 address。")
 
-            passcode = str(call.data[ATTR_PASSCODE]).strip()
+            raw_passcode = call.data.get(ATTR_PASSCODE)
+            raw_name = call.data.get(ATTR_NAME)
+            target_passcode = str(raw_passcode).strip() if raw_passcode is not None else ""
+            target_name = str(raw_name).strip() if raw_name is not None else ""
+            if not target_passcode and not target_name:
+                raise HomeAssistantError("请提供要删除的密码名称 (name) 或密码数字 (passcode)。")
+
             for coord in coordinators:
-                await coord.async_delete_passcode(passcode)
+                await coord.async_delete_passcode(
+                    passcode=target_passcode or None,
+                    name=target_name or None,
+                )
 
         async_register_admin_service(
             hass,
@@ -205,7 +218,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: Sesame5ConfigEntry) -> b
                 {
                     vol.Optional("device_id"): cv.string,
                     vol.Optional("address"): cv.string,
-                    vol.Required(ATTR_PASSCODE): cv.string,
+                    vol.Optional(ATTR_PASSCODE): cv.string,
+                    vol.Optional(ATTR_NAME): cv.string,
                 }
             ),
         )
@@ -224,9 +238,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: Sesame5ConfigEntry) -> b
                     {
                         "type": record.get("type"),
                         "name": record.get("name"),
-                        "passcode_id": record.get("passcode_id")
-                        if "passcode_id" in record
-                        else record.get("id_hex"),
                     }
                     for record in passcodes
                 ]

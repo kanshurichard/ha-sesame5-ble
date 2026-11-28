@@ -129,14 +129,14 @@ data:
 ```
 
 ### 2. `sesame5_ble.delete_passcode` (暗証番号の削除)
-キーパッドから特定の暗証番号を削除します。
+キーパッドから登録名（`get_passcodes` で取得）または暗証番号（数字）を指定して削除します。
 
 ```yaml
 service: sesame5_ble.delete_passcode
 target:
   device_id: <キーパッドのデバイスID>
 data:
-  passcode: "889900" # 削除する暗証番号または16進ID
+  name: "清掃スタッフ" # または `passcode: "889900"`
 ```
 
 ### 3. `sesame5_ble.get_passcodes` (暗証番号一覧の取得)
@@ -196,11 +196,12 @@ Sesame は省電力のため微弱な BLE 電波を使用しています。Home 
 
 ## 🤝 謝辞
 
-- Sesame BLE プロトコルの基礎を築いた **[@ngoc-minh-do](https://github.com/ngoc-minh-do)** 氏の先駆的なプロジェクト [ha-sesame-ble](https://github.com/ngoc-minh-do/ha-sesame-ble) に心より感謝申し上げます。
+- Sesame BLE プロトコルの基礎を築いた **[@ngoc-minh-do](https://github.com/ngoc-minh-do)** 氏の先駆的なプロジェクト [ha-sesame-ble](https://github.com/ngoc-minh-do/ha-sesame-ble)（MIT License）に心より感謝申し上げます。
+- SesameOS 3 プロトコルの実装参考として **[@meronepy](https://github.com/meronepy)** 氏の [gomalock](https://github.com/meronepy/gomalock)（MIT License）に感謝申し上げます。
 - 素晴らしいハードウェアと開発者フレンドリーな環境を提供してくださっている **[CANDY HOUSE 株式会社](https://candyhouse.co/)** に感謝いたします。
 
 ---
 
 ## 📄 ライセンス
 
-本プロジェクトは [MIT ライセンス](LICENSE) の下で公開されています。
+本プロジェクトは [MIT ライセンス](LICENSE) の下で公開されています。サードパーティの著作権表示は [LICENSE](LICENSE) および [NOTICE](NOTICE) をご参照ください。

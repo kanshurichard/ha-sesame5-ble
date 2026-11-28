@@ -132,14 +132,14 @@ data:
 ```
 
 ### 2. `sesame5_ble.delete_passcode`
-Remove a passcode from the keypad.
+Remove a passcode from the keypad by name (from `sesame5_ble.get_passcodes`) or PIN digits.
 
 ```yaml
 service: sesame5_ble.delete_passcode
 target:
   device_id: <KEYPAD_DEVICE_ID>
 data:
-  passcode: "889900" # Passcode digits or hex ID
+  name: "Cleaner" # Or pass `passcode: "889900"`
 ```
 
 ### 3. `sesame5_ble.get_passcodes`
@@ -199,11 +199,12 @@ We strongly recommend placing an inexpensive <b>ESP32 Bluetooth Proxy</b> (runni
 
 ## 🤝 Attribution & Acknowledgments
 
-- Special thanks to **[@ngoc-minh-do](https://github.com/ngoc-minh-do)** for the pioneering work on [ha-sesame-ble](https://github.com/ngoc-minh-do/ha-sesame-ble), which established the foundation for Sesame BLE integration in Home Assistant.
+- Special thanks to **[@ngoc-minh-do](https://github.com/ngoc-minh-do)** for the pioneering work on [ha-sesame-ble](https://github.com/ngoc-minh-do/ha-sesame-ble) (MIT License), which established the foundation for Sesame BLE integration in Home Assistant.
+- Thanks to **[@meronepy](https://github.com/meronepy)** for [gomalock](https://github.com/meronepy/gomalock) (MIT License) for SesameOS 3 protocol insights and reference.
 - Thanks to **[CANDY HOUSE, Inc.](https://candyhouse.co/)** for building high-quality smart locks and providing developer-friendly documentation.
 
 ---
 
 ## 📄 License
 
-This project is licensed under the [MIT License](LICENSE).
+This project is licensed under the [MIT License](LICENSE). See [LICENSE](LICENSE) and [NOTICE](NOTICE) for third-party copyright notices.

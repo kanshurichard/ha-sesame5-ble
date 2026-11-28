@@ -129,14 +129,14 @@ data:
 ```
 
 ### 2. `sesame5_ble.delete_passcode` (删除密码)
-从键盘中删除指定密码：
+通过密码名称（可通过 `get_passcodes` 获取）或数字密码从键盘中删除指定密码：
 
 ```yaml
 service: sesame5_ble.delete_passcode
 target:
   device_id: <键盘设备ID>
 data:
-  passcode: "889900" # 填入要删除的数字密码或16进制ID
+  name: "保洁阿姨" # 或者传入 `passcode: "889900"`
 ```
 
 ### 3. `sesame5_ble.get_passcodes` (获取密码列表)
@@ -196,11 +196,12 @@ Sesame 为节约电量采用微功率蓝牙发射器。如果 Home Assistant 主
 
 ## 🤝 致谢与致敬
 
-- 特别鸣谢 **[@ngoc-minh-do](https://github.com/ngoc-minh-do)** 打造的 [ha-sesame-ble](https://github.com/ngoc-minh-do/ha-sesame-ble) 开创性项目，为 Home Assistant 社区支持 Sesame 蓝牙协议奠定了基础。
+- 特别鸣谢 **[@ngoc-minh-do](https://github.com/ngoc-minh-do)** 打造的 [ha-sesame-ble](https://github.com/ngoc-minh-do/ha-sesame-ble)（MIT License）开创性项目，为 Home Assistant 社区支持 Sesame 蓝牙协议奠定了基础。
+- 感谢 **[@meronepy](https://github.com/meronepy)** 打造的 [gomalock](https://github.com/meronepy/gomalock)（MIT License）在 SesameOS 3 协议上的参考实现。
 - 感谢 **[CANDY HOUSE, Inc.](https://candyhouse.co/)** 制造的高品质智能锁硬件及对开源开发者的友好支持。
 
 ---
 
 ## 📄 开源许可证
 
-本项目基于 [MIT 许可证](LICENSE) 开源。
+本项目基于 [MIT 许可证](LICENSE) 开源。第三方版权声明请参阅 [LICENSE](LICENSE) 与 [NOTICE](NOTICE)。

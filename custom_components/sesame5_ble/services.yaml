@@ -53,7 +53,7 @@ add_passcode:
 
 delete_passcode:
   name: Delete Passcode
-  description: Delete a specific passcode from a Sesame Touch / Keypad device.
+  description: Delete a specific passcode from a Sesame Touch / Keypad device by name or PIN digits.
   fields:
     device_id:
       name: Device
@@ -69,10 +69,17 @@ delete_passcode:
       example: "AA:BB:CC:DD:EE:FF"
       selector:
         text:
+    name:
+      name: Passcode Name
+      description: Name/label of the passcode entry to delete (from get_passcodes).
+      required: false
+      example: "Guest"
+      selector:
+        text:
     passcode:
-      name: Passcode or Passcode ID
-      description: Passcode digits (e.g. 123456) or hex ID to delete.
-      required: true
+      name: Passcode or Name
+      description: PIN digits (4 to 16 digits) or passcode name to delete.
+      required: false
       example: "123456"
       selector:
         text:

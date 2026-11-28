@@ -1,3 +1,7 @@
+# Copyright (c) 2026 kanshurichard
+# Portions based on ha-sesame-ble (Copyright (c) 2026 ngoc-minh-do) and gomalock (Copyright (c) 2026 meronepy).
+# Licensed under the MIT License. See LICENSE and NOTICE in the repository root for details.
+
 """DataUpdateCoordinator for Sesame 5 BLE integration."""
 
 from __future__ import annotations
@@ -74,6 +78,7 @@ class Sesame5Coordinator(DataUpdateCoordinator[Sesame5State]):
         self._device = device
         self._connection_lock = asyncio.Lock()
         self._temp_passcodes: dict[str, dict[str, Any]] = {}
+        self._passcode_cache: list[dict[str, Any]] = []
         self._unsub_dispatcher: Callable[[], None] | None = None
         self._is_shutting_down = False
         self._reconnect_task: asyncio.Task[None] | None = None
@@ -460,34 +465,122 @@ class Sesame5Coordinator(DataUpdateCoordinator[Sesame5State]):
             one_time,
         )
 
-    async def async_delete_passcode(self, passcode: str) -> None:
-        """Delete a passcode from the keypad and cancel timers."""
+    def _find_passcode_record_by_name(self, lookup_name: str) -> dict[str, Any] | None:
+        """Find a cached credential record matching the given passcode name."""
+        target = lookup_name.strip()
+        dev_passcodes = getattr(self._device, "passcodes", None)
+        sources: list[dict[str, Any]] = list(self._passcode_cache)
+        if isinstance(dev_passcodes, list):
+            sources.extend(dev_passcodes)
+
+        for record in sources:
+            if str(record.get("name", "")).strip() == target:
+                return record
+        return None
+
+    def _cancel_temp_passcodes(self, code: str | None = None, name: str | None = None) -> str | None:
+        """Cancel and remove matching temporary passcode entries, returning matched code if any."""
+        matched_code: str | None = None
+        for key, info in list(self._temp_passcodes.items()):
+            if (code and key == code) or (name and str(info.get("name", "")).strip() == name.strip()):
+                entry = self._temp_passcodes.pop(key)
+                unsub = entry.get("unsub")
+                if callable(unsub):
+                    unsub()
+                if matched_code is None:
+                    matched_code = key
+        return matched_code
+
+    async def async_delete_passcode(
+        self, passcode: str | None = None, name: str | None = None
+    ) -> None:
+        """Delete a passcode from the keypad by name or PIN digits and cancel timers."""
         if self.read_only:
             raise HomeAssistantError("Sesame 当前处于只读模式，已禁止删除键盘密码。如需操作，请在集成选项中关闭只读模式。")
 
-        if passcode in self._temp_passcodes:
-            unsub = self._temp_passcodes.pop(passcode).get("unsub")
-            if callable(unsub):
-                unsub()
+        clean_passcode = str(passcode).strip() if passcode is not None else ""
+        clean_name = str(name).strip() if name is not None else ""
+        if not clean_passcode and not clean_name:
+            raise HomeAssistantError("请提供要删除的密码名称 (name) 或密码数字 (passcode)。")
 
         try:
             await self._ensure_connected()
-            await self._device.delete_passcode(passcode)
+
+            target_to_delete: str | None = None
+            lookup_name = clean_name
+            is_pin_digits = bool(
+                not clean_name
+                and clean_passcode.isdigit()
+                and (
+                    4 <= len(clean_passcode) <= 16
+                    or (
+                        len(clean_passcode) >= 8
+                        and len(clean_passcode) % 2 == 0
+                        and all(clean_passcode[i] == "0" for i in range(0, len(clean_passcode), 2))
+                    )
+                )
+            )
+
+            if not lookup_name and not is_pin_digits:
+                lookup_name = clean_passcode
+
+            if lookup_name:
+                record = self._find_passcode_record_by_name(lookup_name)
+                if record is None:
+                    records = await self._device.request_passcodes()
+                    self._passcode_cache = list(records)
+                    record = self._find_passcode_record_by_name(lookup_name)
+
+                if record is not None:
+                    target_to_delete = (
+                        record.get("id_hex")
+                        or record.get("passcode_id")
+                        or record.get("passcode")
+                    )
+                    if not target_to_delete:
+                        raise HomeAssistantError(f"密码 '{lookup_name}' 缺少内部标识，无法删除。")
+                else:
+                    matched_temp = self._cancel_temp_passcodes(name=lookup_name)
+                    if matched_temp:
+                        target_to_delete = matched_temp
+                    else:
+                        raise HomeAssistantError(f"未找到名称为 '{lookup_name}' 的密码记录。")
+            else:
+                target_to_delete = clean_passcode
+
+            # Cancel any matching timers (by PIN digits or by name)
+            self._cancel_temp_passcodes(code=target_to_delete, name=lookup_name or None)
+            if target_to_delete and all(
+                c in "0123456789abcdefABCDEF" for c in target_to_delete
+            ) and len(target_to_delete) >= 8 and len(target_to_delete) % 2 == 0 and all(
+                target_to_delete[i] == "0" for i in range(0, len(target_to_delete), 2)
+            ):
+                decoded_digits = "".join(str(b) for b in bytes.fromhex(target_to_delete))
+                self._cancel_temp_passcodes(code=decoded_digits)
+
+            await self._device.delete_passcode(target_to_delete)
+
+            # Evict deleted record from internal cache
+            if self._passcode_cache:
+                self._passcode_cache = [
+                    r
+                    for r in self._passcode_cache
+                    if (r.get("id_hex") or r.get("passcode_id")) != target_to_delete
+                    and (not lookup_name or str(r.get("name", "")).strip() != lookup_name)
+                ]
         finally:
             self._schedule_power_saving_disconnect()
 
     async def async_get_passcodes(self) -> list[dict[str, Any]]:
-        """Return list of passcodes registered on the device without clear PIN digits."""
+        """Return list of passcodes (type and name only; IDs stay internal to coordinator)."""
         try:
             await self._ensure_connected()
             records = await self._device.request_passcodes()
+            self._passcode_cache = list(records)
             return [
                 {
                     "type": record.get("type"),
                     "name": record.get("name"),
-                    "passcode_id": record.get("passcode_id")
-                    if "passcode_id" in record
-                    else record.get("id_hex"),
                 }
                 for record in records
             ]

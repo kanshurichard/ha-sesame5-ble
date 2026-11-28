@@ -59,6 +59,18 @@ for mod in [
 sys.modules["homeassistant.const"].CONF_ADDRESS = "address"
 
 
+class MockHomeAssistantError(Exception):
+    pass
+
+
+class MockConfigEntryNotReady(Exception):
+    pass
+
+
+sys.modules["homeassistant.exceptions"].HomeAssistantError = MockHomeAssistantError
+sys.modules["homeassistant.exceptions"].ConfigEntryNotReady = MockConfigEntryNotReady
+
+
 class MockDataUpdateCoordinator:
     def __init__(self, hass, logger, name, config_entry, update_interval=None):
         self.hass = hass
@@ -249,3 +261,45 @@ sys.modules["homeassistant.config_entries"].OptionsFlow = MockOptionsFlow
 sys.modules["homeassistant.config_entries"].ConfigFlow = MockConfigFlow
 sys.modules["homeassistant.components.bluetooth"].async_scanner_count = MagicMock(return_value=1)
 sys.modules["homeassistant.components.bluetooth"].async_request_active_scan = AsyncMock()
+
+
+class MockTextSelectorType(str, Enum):
+    PASSWORD = "password"
+    TEXT = "text"
+
+
+class MockTextSelectorConfig:
+    def __init__(self, type=MockTextSelectorType.TEXT, **kwargs):
+        self.type = type
+
+
+class MockTextSelector:
+    def __init__(self, config=None):
+        self.config = config
+
+
+class MockVolKey:
+    def __init__(self, key, default=None):
+        self.schema = key
+        self.default = default
+
+    def __hash__(self):
+        return hash(self.schema)
+
+    def __eq__(self, other):
+        if isinstance(other, MockVolKey):
+            return self.schema == other.schema
+        return self.schema == other
+
+
+class MockVolSchema:
+    def __init__(self, schema):
+        self.schema = schema
+
+
+sys.modules["homeassistant.helpers.selector"].TextSelector = MockTextSelector
+sys.modules["homeassistant.helpers.selector"].TextSelectorConfig = MockTextSelectorConfig
+sys.modules["homeassistant.helpers.selector"].TextSelectorType = MockTextSelectorType
+sys.modules["voluptuous"].Schema = MockVolSchema
+sys.modules["voluptuous"].Required = lambda k, default=None: MockVolKey(k, default)
+sys.modules["voluptuous"].Optional = lambda k, default=None: MockVolKey(k, default)

@@ -90,4 +90,4 @@
 
 ## 开源协议
 
-本项目采用 [MIT License](LICENSE)。
+本项目采用 [MIT License](LICENSE)。第三方版权声明请参阅 [LICENSE](LICENSE) 与 [NOTICE](NOTICE)。
